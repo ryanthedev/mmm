@@ -1,5 +1,5 @@
 # mmm - Modular Markdown Machine
-<img width="50" height="50" alt="image" src="https://github.com/user-attachments/assets/143c69ce-b408-4067-96e3-d5f18f4fa778" />
+<img width="150" height="150" alt="image" src="https://github.com/user-attachments/assets/143c69ce-b408-4067-96e3-d5f18f4fa778" />
 
 A streaming markdown parser with plugin support, written in TypeScript.
 
