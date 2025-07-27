@@ -1,0 +1,797 @@
+export interface ParseResult {
+  type: 'need_more_lines' | 'need_next_token' | 'complete';
+  element?: RenderedElement;
+  remainingInput?: string;
+}
+
+export interface RenderedElement {
+  type: string;
+  content: string;
+  children?: RenderedElement[];
+  attributes?: Record<string, string>;
+  classes?: string[];
+}
+
+export interface ElementTheme {
+  classes: string[];
+  attributes?: Record<string, string>;
+}
+
+export interface Theme {
+  paragraph: ElementTheme;
+  heading: {
+    h1: ElementTheme;
+    h2: ElementTheme;
+    h3: ElementTheme;
+    h4: ElementTheme;
+    h5: ElementTheme;
+    h6: ElementTheme;
+  };
+  codeBlock: ElementTheme;
+  blockquote: ElementTheme;
+  list: {
+    ordered: ElementTheme;
+    unordered: ElementTheme;
+    item: ElementTheme;
+  };
+  emptyLine: ElementTheme;
+}
+
+export interface ThemeProvider {
+  getTheme(elementType: string, context?: Record<string, unknown>): ElementTheme;
+}
+
+export class DefaultThemeProvider implements ThemeProvider {
+  private theme: Theme;
+
+  constructor(theme?: Partial<Theme>) {
+    this.theme = this.createDefaultTheme();
+    if (theme) {
+      this.theme = this.mergeThemes(this.theme, theme);
+    }
+  }
+
+  getTheme(elementType: string): ElementTheme {
+    switch (elementType) {
+      case 'p':
+        return this.theme.paragraph;
+      case 'h1':
+        return this.theme.heading.h1;
+      case 'h2':
+        return this.theme.heading.h2;
+      case 'h3':
+        return this.theme.heading.h3;
+      case 'h4':
+        return this.theme.heading.h4;
+      case 'h5':
+        return this.theme.heading.h5;
+      case 'h6':
+        return this.theme.heading.h6;
+      case 'code_block':
+        return this.theme.codeBlock;
+      case 'blockquote':
+        return this.theme.blockquote;
+      case 'ol':
+        return this.theme.list.ordered;
+      case 'ul':
+        return this.theme.list.unordered;
+      case 'li':
+        return this.theme.list.item;
+      case 'empty_line':
+        return this.theme.emptyLine;
+      default:
+        return { classes: [] };
+    }
+  }
+
+  private createDefaultTheme(): Theme {
+    return {
+      paragraph: {
+        classes: ['mb-4']
+      },
+      heading: {
+        h1: {
+          classes: ['text-4xl', 'font-bold', 'mb-6']
+        },
+        h2: {
+          classes: ['text-3xl', 'font-bold', 'mb-5']
+        },
+        h3: {
+          classes: ['text-2xl', 'font-bold', 'mb-4']
+        },
+        h4: {
+          classes: ['text-xl', 'font-bold', 'mb-3']
+        },
+        h5: {
+          classes: ['text-lg', 'font-bold', 'mb-2']
+        },
+        h6: {
+          classes: ['text-base', 'font-bold', 'mb-2']
+        }
+      },
+      codeBlock: {
+        classes: ['bg-gray-100', 'p-4', 'rounded-lg', 'font-mono', 'text-sm', 'overflow-x-auto']
+      },
+      blockquote: {
+        classes: ['border-l-4', 'border-gray-400', 'pl-4', 'italic', 'my-4']
+      },
+      list: {
+        ordered: {
+          classes: ['mb-4', 'list-decimal', 'list-inside']
+        },
+        unordered: {
+          classes: ['mb-4', 'list-disc', 'list-inside']
+        },
+        item: {
+          classes: ['mb-1']
+        }
+      },
+      emptyLine: {
+        classes: ['my-2']
+      }
+    };
+  }
+
+  private mergeThemes(defaultTheme: Theme, customTheme: Partial<Theme>): Theme {
+    const merged = { ...defaultTheme };
+    
+    if (customTheme.paragraph) {
+      merged.paragraph = { ...defaultTheme.paragraph, ...customTheme.paragraph };
+    }
+    
+    if (customTheme.heading) {
+      merged.heading = {
+        ...defaultTheme.heading,
+        ...Object.keys(customTheme.heading).reduce((acc, key) => {
+          acc[key as keyof Theme['heading']] = {
+            ...defaultTheme.heading[key as keyof Theme['heading']],
+            ...customTheme.heading![key as keyof Theme['heading']]
+          };
+          return acc;
+        }, {} as Theme['heading'])
+      };
+    }
+    
+    if (customTheme.codeBlock) {
+      merged.codeBlock = { ...defaultTheme.codeBlock, ...customTheme.codeBlock };
+    }
+    
+    if (customTheme.blockquote) {
+      merged.blockquote = { ...defaultTheme.blockquote, ...customTheme.blockquote };
+    }
+    
+    if (customTheme.list) {
+      merged.list = {
+        ...defaultTheme.list,
+        ...Object.keys(customTheme.list).reduce((acc, key) => {
+          acc[key as keyof Theme['list']] = {
+            ...defaultTheme.list[key as keyof Theme['list']],
+            ...customTheme.list![key as keyof Theme['list']]
+          };
+          return acc;
+        }, {} as Theme['list'])
+      };
+    }
+    
+    if (customTheme.emptyLine) {
+      merged.emptyLine = { ...defaultTheme.emptyLine, ...customTheme.emptyLine };
+    }
+    
+    return merged;
+  }
+}
+
+export interface ParserState {
+  blockType: 'paragraph' | 'heading' | 'code_block' | 'blockquote' | 'list' | null;
+  buffer: string[];
+  inCodeBlock: boolean;
+  codeBlockFence?: string;
+  codeBlockFenceLength?: number; // Length of fence for proper matching
+  listType?: 'ordered' | 'unordered';
+  listLevels?: number[]; // Indentation levels for nested lists
+}
+
+export interface LineInfo {
+  raw: string;
+  trimmed: string;
+  leadingWhitespace: string;
+  isWhitespaceOnly: boolean;
+  indentLevel: number;
+  type: 'empty' | 'whitespace_only' | 'content' | 'special_whitespace';
+}
+
+export interface LineProcessor {
+  name: string;
+  canHandle: (lineInfo: LineInfo, state: ParserState) => boolean;
+  process: (lineInfo: LineInfo, state: ParserState, parser: MarkdownParser) => ParseResult;
+  priority: number; // Higher priority processors checked first
+}
+
+export class MarkdownParser {
+  private state: ParserState = {
+    blockType: null,
+    buffer: [],
+    inCodeBlock: false,
+    listLevels: []
+  };
+
+  private hooks: Record<string, (element: RenderedElement) => RenderedElement> = {};
+
+  private lineProcessors: LineProcessor[] = [];
+
+  private themeProvider: ThemeProvider;
+
+  constructor(options?: {
+    hooks?: Record<string, (element: RenderedElement) => RenderedElement>;
+    themeProvider?: ThemeProvider;
+    theme?: Partial<Theme>;
+    enableThemeHook?: boolean;
+  }) {
+    if (options?.hooks) {
+      this.hooks = options.hooks;
+    }
+    
+    this.themeProvider = options?.themeProvider || new DefaultThemeProvider(options?.theme);
+    
+    // Add theme hook by default unless explicitly disabled
+    if (options?.enableThemeHook !== false) {
+      this.hooks['__theme__'] = (element: RenderedElement): RenderedElement => this.applyTheme(element);
+    }
+    
+    // Sort processors by priority descending
+    this.lineProcessors.sort((a, b) => b.priority - a.priority);
+  }
+
+  addLineProcessor(processor: LineProcessor): void {
+    this.lineProcessors.push(processor);
+    this.lineProcessors.sort((a, b) => b.priority - a.priority);
+  }
+
+  applyTheme(element: RenderedElement, context?: Record<string, unknown>): RenderedElement {
+    const theme = this.themeProvider.getTheme(element.type, context);
+    return {
+      ...element,
+      classes: [...(theme.classes || []), ...(element.classes || [])],
+      attributes: { ...(theme.attributes || {}), ...(element.attributes || {}) }
+    };
+  }
+
+  feedLine(line: string): ParseResult {
+    if (this.state.inCodeBlock) {
+      return this.handleCodeBlockLine(line);
+    }
+
+    const lineInfo = this.classifyLine(line);
+
+    // Check custom processors first
+    for (const processor of this.lineProcessors) {
+      if (processor.canHandle(lineInfo, this.state)) {
+        return processor.process(lineInfo, this.state, this);
+      }
+    }
+
+    // Fallback to default handling
+    if (lineInfo.trimmed === '') {
+      return this.handleEmptyLine();
+    }
+
+    if (this.state.blockType !== null) {
+      if (this.continueCurrentBlock(line, lineInfo.trimmed)) {
+        return { type: 'need_more_lines' };
+      } else {
+        const result = this.completeCurrentBlock();
+        if (result.type === 'complete') {
+          result.remainingInput = line;
+        }
+        return result;
+      }
+    }
+
+    // Start new block
+    if (this.isCodeBlockStart(line)) {
+      return this.startCodeBlock(line);
+    }
+
+    if (this.isHeading(lineInfo.trimmed)) {
+      return this.handleHeading(line);
+    }
+
+    if (this.isBlockquote(line)) {
+      return this.handleBlockquote(line);
+    }
+
+    const listInfo = this.getListInfo(line);
+    if (listInfo) {
+      return this.handleList(line, listInfo);
+    }
+
+    return this.handleParagraph(line);
+  }
+
+  private classifyLine(line: string): LineInfo {
+    const trimmed = line.trim();
+    const leadingWhitespace = line.match(/^\s*/)?.[0] || '';
+    
+    let type: LineInfo['type'];
+    if (line.length === 0) {
+      type = 'empty';
+    } else if (trimmed.length === 0) {
+      type = 'whitespace_only';
+    } else if (/^[\s\t]+$/.test(line)) {
+      type = 'special_whitespace';
+    } else {
+      type = 'content';
+    }
+
+    return {
+      raw: line,
+      trimmed,
+      leadingWhitespace,
+      isWhitespaceOnly: trimmed.length === 0,
+      indentLevel: leadingWhitespace.length,
+      type
+    };
+  }
+
+  private continueCurrentBlock(line: string, trimmed: string): boolean {
+    switch (this.state.blockType) {
+      case 'paragraph':
+        if (
+          this.isCodeBlockStart(line) ||
+          this.isHeading(trimmed) ||
+          this.isBlockquote(line) ||
+          this.getListInfo(line)
+        ) {
+          return false;
+        }
+        this.state.buffer.push(line);
+        return true;
+
+      case 'blockquote':
+        if (this.isBlockquote(line)) {
+          this.state.buffer.push(this.stripBlockquotePrefix(line));
+          return true;
+        }
+        // Lazy continuation for non-empty lines that aren't starting new blocks
+        if (trimmed !== '' && !this.isCodeBlockStart(line) && !this.isHeading(trimmed) && !this.getListInfo(line)) {
+          this.state.buffer.push(line);
+          return true;
+        }
+        return false;
+
+      case 'list': {
+        const listInfo = this.getListInfo(line);
+        if (listInfo) {
+          this.state.buffer.push(line);
+          return true;
+        }
+        // Continuation for multi-line list items with indentation
+        if (line.startsWith(' ') && trimmed !== '') {
+          this.state.buffer.push(line);
+          return true;
+        }
+        return false;
+      }
+
+      default:
+        // For custom block types, default to continuing the block by adding to buffer
+        // Custom processors should handle termination via their canHandle logic
+        this.state.buffer.push(line);
+        return true;
+    }
+  }
+
+  completeCurrentBlock(): ParseResult {
+    let result: ParseResult = { type: 'need_more_lines' };
+
+    try {
+      if (this.state.blockType === 'paragraph') {
+        result = this.completeParagraph();
+      } else if (this.state.blockType === 'blockquote') {
+        result = this.completeBlockquote();
+      } else if (this.state.blockType === 'list') {
+        result = this.completeList();
+      } else if (this.state.blockType === 'code_block' || this.state.inCodeBlock) {
+        result = this.completeIncompleteCodeBlock();
+      } else {
+        result = { type: 'need_next_token' };
+      }
+    } catch (error) {
+      console.error('Error completing block:', error);
+      this.resetState();
+      return { type: 'need_next_token' };
+    }
+
+    return result;
+  }
+
+  private isBlockquote(line: string): boolean {
+    return /^\s*>\s*/.test(line);
+  }
+
+  private stripBlockquotePrefix(line: string): string {
+    const match = line.match(/^\s*>\s*/);
+    if (match) {
+      return line.slice(match[0].length);
+    }
+    return line;
+  }
+
+  // Extract list information including nesting level based on indentation
+  private getListInfo(line: string): { indent: number; isOrdered: boolean; marker: string } | null {
+    const match = line.match(/^(\s*)([-*+]|\d+[.)])\s+/);
+    if (!match) return null;
+
+    const indent = match[1].length;
+    const marker = match[2];
+    const isOrdered = /\d+[.)]/.test(marker); // Supports both . and ) for ordered lists
+
+    return { indent, isOrdered, marker };
+  }
+
+  private isCodeBlockStart(line: string): boolean {
+    const match = line.match(/^(\s*)(`{3,}|~{3,})/);
+    return !!match;
+  }
+
+  private isHeading(trimmed: string): boolean {
+    return /^#{1,6}\s/.test(trimmed);
+  }
+
+  private startCodeBlock(line: string): ParseResult {
+    const match = line.match(/^(\s*)(`{3,}|~{3,})(.*)$/);
+    if (!match) return { type: 'need_next_token' };
+
+    this.state.inCodeBlock = true;
+    this.state.codeBlockFence = match[2][0]; // ` or ~
+    this.state.codeBlockFenceLength = match[2].length;
+    this.state.blockType = 'code_block';
+    this.state.buffer = [match[3].trim() || ''];
+
+    return { type: 'need_more_lines' };
+  }
+
+  // Handle lines inside code blocks, looking for proper closing fence
+  private handleCodeBlockLine(line: string): ParseResult {
+    const trimmed = line.trim();
+    // Check for closing fence: must match fence type and length, with no extra fence chars
+    if (trimmed.startsWith(this.state.codeBlockFence!) && trimmed.length >= this.state.codeBlockFenceLength! && trimmed.charAt(this.state.codeBlockFenceLength!) !== this.state.codeBlockFence![0]) {
+      const language = this.state.buffer[0];
+      const code = this.state.buffer.slice(1).join('\n');
+
+      const element: RenderedElement = {
+        type: 'code_block',
+        content: code,
+        attributes: language ? { 'data-language': language } : {}
+      };
+
+      return this.completeElement(element);
+    }
+
+    this.state.buffer.push(line);
+    return { type: 'need_more_lines' };
+  }
+
+  private handleHeading(line: string): ParseResult {
+    const match = line.match(/^\s*(#{1,6})\s+(.+)$/);
+    if (!match) return { type: 'need_next_token' };
+
+    const level = match[1].length;
+    const content = match[2].trim();
+
+    const element: RenderedElement = {
+      type: `h${level}`,
+      content: this.parseInline(content)
+    };
+
+    return this.completeElement(element);
+  }
+
+  private handleBlockquote(line: string): ParseResult {
+    this.state.blockType = 'blockquote';
+    this.state.buffer = [this.stripBlockquotePrefix(line)];
+    return { type: 'need_more_lines' };
+  }
+
+  private completeBlockquote(): ParseResult {
+    const innerMarkdown = this.state.buffer.join('\n');
+    const innerParser = new MarkdownParser({
+      hooks: this.hooks,
+      themeProvider: this.themeProvider
+    });
+    const children = innerParser.parse(innerMarkdown);
+    const element: RenderedElement = {
+      type: 'blockquote',
+      content: '',
+      children
+    };
+    return this.completeElement(element);
+  }
+
+  private handleList(line: string, listInfo: { indent: number; isOrdered: boolean; marker: string }): ParseResult {
+    this.state.blockType = 'list';
+    this.state.listType = listInfo.isOrdered ? 'ordered' : 'unordered';
+    this.state.listLevels = [listInfo.indent];
+    this.state.buffer = [line];
+    return { type: 'need_more_lines' };
+  }
+
+  private completeList(): ParseResult {
+    const items = this.parseListItems(this.state.buffer);
+    const element: RenderedElement = {
+      type: this.state.listType === 'ordered' ? 'ol' : 'ul',
+      content: '',
+      children: items
+    };
+    return this.completeElement(element);
+  }
+
+  private parseListItems(lines: string[]): RenderedElement[] {
+    const items: RenderedElement[] = [];
+    let currentItem: string[] = [];
+
+    lines.forEach(line => {
+      const listInfo = this.getListInfo(line);
+      if (listInfo && currentItem.length > 0 && listInfo.indent <= (this.state.listLevels![this.state.listLevels!.length - 1] || 0)) {
+        // Finish current item
+        items.push(this.createListItem(currentItem));
+        currentItem = [];
+      }
+      currentItem.push(line);
+    });
+
+    if (currentItem.length > 0) {
+      items.push(this.createListItem(currentItem));
+    }
+
+    return items;
+  }
+
+  private createListItem(lines: string[]): RenderedElement {
+    const firstLine = lines[0];
+    const match = firstLine.match(/^\s*([-*+]|\d+[.)])\s+/);
+    const prefixLength = match ? match[0].length : 0;
+    const firstContent = firstLine.slice(prefixLength);
+    const innerLines = [firstContent, ...lines.slice(1)];
+    const innerMarkdown = innerLines.join('\n');
+    const innerParser = new MarkdownParser({
+      hooks: this.hooks,
+      themeProvider: this.themeProvider
+    });
+    const children = innerParser.parse(innerMarkdown);
+
+    const element: RenderedElement = {
+      type: 'li',
+      content: '',
+      children
+    };
+
+    // Unwrap if single paragraph
+    if (children.length === 1 && children[0].type === 'p') {
+      element.content = children[0].content;
+      element.children = undefined;
+    }
+
+    // Apply theme before returning
+    let finalElement = element;
+    
+    // Apply theme hook first if it exists
+    if (this.hooks['__theme__']) {
+      finalElement = this.hooks['__theme__'](finalElement);
+    }
+    
+    // Apply element-specific hook if it exists
+    if (this.hooks[element.type]) {
+      finalElement = this.hooks[element.type](finalElement);
+    }
+    
+    return finalElement;
+  }
+
+  private handleParagraph(line: string): ParseResult {
+    this.state.blockType = 'paragraph';
+    this.state.buffer = [line];
+    return { type: 'need_more_lines' };
+  }
+
+  private handleEmptyLine(): ParseResult {
+    if (this.state.blockType && this.state.blockType !== 'code_block' && this.state.blockType !== 'blockquote' && this.state.blockType !== 'list') {
+      return this.completeCurrentBlock();
+    }
+    return { type: 'need_more_lines' };
+  }
+
+  private completeParagraph(): ParseResult {
+    const content = this.state.buffer.join('\n');
+    const element: RenderedElement = {
+      type: 'p',
+      content: this.parseInline(content)
+    };
+    return this.completeElement(element);
+  }
+
+  private completeIncompleteCodeBlock(): ParseResult {
+    const language = this.state.buffer[0];
+    const code = this.state.buffer.slice(1).join('\n');
+
+    const element: RenderedElement = {
+      type: 'code_block',
+      content: code,
+      attributes: language ? { 'data-language': language } : {}
+    };
+
+    return this.completeElement(element);
+  }
+
+  // Improved inline parsing with escape sequence support and tokenization
+  // Still simplified - full CommonMark compliance would need a proper AST parser
+  private parseInline(text: string): string {
+    // Use a tokenizer approach for better accuracy
+    const tokens: string[] = [];
+    let i = 0;
+    let current = '';
+    let escape = false;
+
+    while (i < text.length) {
+      const char = text[i];
+
+      if (escape) {
+        current += char;
+        escape = false;
+        i++;
+        continue;
+      }
+
+      if (char === '\\') {
+        escape = true;
+        i++;
+        continue;
+      }
+
+      if (char === '*' || char === '_') {
+        // Handle bold and italic
+        const next = text[i + 1];
+        if (next === '*' || next === '_') {
+          // Bold
+          if (current) {
+            tokens.push(current);
+            current = '';
+          }
+          tokens.push(char + next);
+          i += 2;
+          continue;
+        } else {
+          // Italic
+          if (current) {
+            tokens.push(current);
+            current = '';
+          }
+          tokens.push(char);
+          i++;
+          continue;
+        }
+      } else if (char === '`') {
+        // Code
+        if (current) {
+          tokens.push(current);
+          current = '';
+        }
+        tokens.push('`');
+        i++;
+        continue;
+      } else if (char === '[') {
+        // Link
+        if (current) {
+          tokens.push(current);
+          current = '';
+        }
+        tokens.push('[');
+        i++;
+        continue;
+      } else {
+        current += char;
+        i++;
+      }
+    }
+    if (current) tokens.push(current);
+
+    // Now process tokens with proper nesting
+    // This is simplified; for full nesting, a stack-based parser is better
+    let html = tokens.join('');
+    // Apply replacements in order to handle some nesting: bold first, then italic
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'); // Bold first
+    html = html.replace(/\*([^*]+?)\*/g, '<em>$1</em>'); // Italic after
+    html = html.replace(/_([^_]+?)_/g, '<em>$1</em>');
+    html = html.replace(/`([^`]+?)`/g, '<code>$1</code>');
+    html = html.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, '<a href="$2">$1</a>');
+
+    return html;
+  }
+
+  private resetState(): void {
+    this.state = {
+      blockType: null,
+      buffer: [],
+      inCodeBlock: false,
+      listLevels: []
+    };
+  }
+
+  completeElement(element: RenderedElement): ParseResult {
+    let finalElement = element;
+    
+    // Apply theme hook first if it exists
+    if (this.hooks['__theme__']) {
+      finalElement = this.hooks['__theme__'](finalElement);
+    }
+    
+    // Apply element-specific hook if it exists
+    if (this.hooks[element.type]) {
+      finalElement = this.hooks[element.type](finalElement);
+    }
+    
+    this.resetState();
+    return { type: 'complete', element: finalElement };
+  }
+
+  reset(): void {
+    this.resetState();
+  }
+
+  parse(markdown: string): RenderedElement[] {
+    this.resetState();
+    const lines = markdown.split(/\r?\n/);
+    const tokens: RenderedElement[] = [];
+    let i = 0;
+    while (i < lines.length) {
+      const result = this.feedLine(lines[i]);
+      if (result.type === 'complete' && result.element) {
+        tokens.push(result.element);
+      }
+      if (result.remainingInput !== undefined) {
+        // Stay on the same line
+      } else {
+        i++;
+      }
+    }
+    // Flush any remaining block
+    const flushResult = this.completeCurrentBlock();
+    if (flushResult.type === 'complete' && flushResult.element) {
+      tokens.push(flushResult.element);
+    }
+    return tokens;
+  }
+}
+
+// Example: Blank Line Processor
+export const blankLineProcessor: LineProcessor = {
+  name: 'blank_line_handler',
+  priority: 100, // High priority to catch before default empty line handler
+  
+  canHandle: (lineInfo: LineInfo, state: ParserState) => {
+    return lineInfo.isWhitespaceOnly && !state.inCodeBlock;
+  },
+  
+  process: (lineInfo: LineInfo, state: ParserState, parser: MarkdownParser) => {
+    // If we have an active block, complete it first and reprocess this blank line
+    if (state.blockType !== null) {
+      const result = parser.completeCurrentBlock();
+      if (result.type === 'complete') {
+        result.remainingInput = lineInfo.raw;
+      }
+      return result;
+    }
+    
+    // Create a special element for blank lines
+    const element: RenderedElement = {
+      type: 'empty_line',
+      content: ''
+    };
+    
+    return parser.completeElement(element);
+  }
+};
+
+// Usage example:
+// const parser = new MarkdownParser();
+// parser.addLineProcessor(blankLineProcessor);

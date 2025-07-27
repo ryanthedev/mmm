@@ -1,0 +1,50 @@
+{
+  "name": "mmm",
+  "version": "1.0.0",
+  "description": "A streaming markdown parser with plugin support",
+  "type": "module",
+  "main": "dist/mmm.js",
+  "types": "dist/mmm.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage",
+    "test:ui": "vitest --ui",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "markdown",
+    "parser",
+    "streaming",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.6.0",
+    "@typescript-eslint/eslint-plugin": "^8.38.0",
+    "@typescript-eslint/parser": "^8.38.0",
+    "@vitest/ui": "^3.2.4",
+    "eslint": "^9.32.0",
+    "typescript": "^5.2.2",
+    "typescript-eslint": "^8.38.0",
+    "vite": "^7.0.6",
+    "vitest": "^3.2.4"
+  },
+  "files": [
+    "dist/"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/mmm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/mmm/issues"
+  },
+  "homepage": "https://github.com/yourusername/mmm#readme"
+}
