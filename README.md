@@ -39,6 +39,7 @@ console.log(result);
 - **Code Blocks**: Fenced with ``` or ~~~
 - **Blockquotes**: Lines starting with `>`
 - **Lists**: Ordered (1.) and unordered (-, *, +)
+- **Tables**: GitHub Flavored Markdown tables with alignment support
 - **Inline Formatting**: **bold**, *italic*, `code`, [links](url)
 
 ## Plugin System

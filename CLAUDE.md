@@ -38,7 +38,7 @@ This is a streaming markdown parser built as a single-file TypeScript module wit
 
 ### Plugin Architecture
 
-Built-in processors handle standard markdown (headings, paragraphs, code blocks, lists, blockquotes). The system supports custom LineProcessors that can:
+Built-in processors handle standard markdown (headings, paragraphs, code blocks, lists, blockquotes, tables). The system supports custom LineProcessors that can:
 - Check if they can handle a line via `canHandle()`
 - Process the line and return `ParseResult`
 - Maintain state across multiple lines

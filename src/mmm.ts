@@ -2,6 +2,7 @@ export interface ParseResult {
   type: 'need_more_lines' | 'need_next_token' | 'complete';
   element?: RenderedElement;
   remainingInput?: string;
+  error?: any;
 }
 
 export interface RenderedElement {
@@ -35,6 +36,14 @@ export interface Theme {
     item: ElementTheme;
   };
   emptyLine: ElementTheme;
+  table: {
+    table: ElementTheme;
+    thead: ElementTheme;
+    tbody: ElementTheme;
+    tr: ElementTheme;
+    th: ElementTheme;
+    td: ElementTheme;
+  };
 }
 
 export interface ThemeProvider {
@@ -79,6 +88,18 @@ export class DefaultThemeProvider implements ThemeProvider {
         return this.theme.list.item;
       case 'empty_line':
         return this.theme.emptyLine;
+      case 'table':
+        return this.theme.table.table;
+      case 'thead':
+        return this.theme.table.thead;
+      case 'tbody':
+        return this.theme.table.tbody;
+      case 'tr':
+        return this.theme.table.tr;
+      case 'th':
+        return this.theme.table.th;
+      case 'td':
+        return this.theme.table.td;
       default:
         return { classes: [] };
     }
@@ -128,6 +149,26 @@ export class DefaultThemeProvider implements ThemeProvider {
       },
       emptyLine: {
         classes: ['my-2']
+      },
+      table: {
+        table: {
+          classes: ['table-auto', 'border-collapse', 'border', 'border-gray-300', 'w-full', 'mb-4']
+        },
+        thead: {
+          classes: ['bg-gray-50']
+        },
+        tbody: {
+          classes: []
+        },
+        tr: {
+          classes: ['border-b', 'border-gray-200']
+        },
+        th: {
+          classes: ['px-4', 'py-2', 'text-left', 'font-semibold', 'border-r', 'border-gray-300']
+        },
+        td: {
+          classes: ['px-4', 'py-2', 'border-r', 'border-gray-300']
+        }
       }
     };
   }
@@ -177,18 +218,33 @@ export class DefaultThemeProvider implements ThemeProvider {
       merged.emptyLine = { ...defaultTheme.emptyLine, ...customTheme.emptyLine };
     }
     
+    if (customTheme.table) {
+      merged.table = {
+        ...defaultTheme.table,
+        ...Object.keys(customTheme.table).reduce((acc, key) => {
+          acc[key as keyof Theme['table']] = {
+            ...defaultTheme.table[key as keyof Theme['table']],
+            ...customTheme.table![key as keyof Theme['table']]
+          };
+          return acc;
+        }, {} as Theme['table'])
+      };
+    }
+    
     return merged;
   }
 }
 
 export interface ParserState {
-  blockType: 'paragraph' | 'heading' | 'code_block' | 'blockquote' | 'list' | null;
+  blockType: 'paragraph' | 'heading' | 'code_block' | 'blockquote' | 'list' | 'table' | null;
   buffer: string[];
   inCodeBlock: boolean;
   codeBlockFence?: string;
   codeBlockFenceLength?: number; // Length of fence for proper matching
   listType?: 'ordered' | 'unordered';
   listLevels?: number[]; // Indentation levels for nested lists
+  tableHeaders?: string[];
+  tableAlignments?: ('left' | 'center' | 'right')[];
 }
 
 export interface LineInfo {
@@ -249,11 +305,25 @@ export class MarkdownParser {
 
   applyTheme(element: RenderedElement, context?: Record<string, unknown>): RenderedElement {
     const theme = this.themeProvider.getTheme(element.type, context);
+    const mergedAttributes = { ...(theme.attributes || {}), ...(element.attributes || {}) };
     return {
       ...element,
       classes: [...(theme.classes || []), ...(element.classes || [])],
-      attributes: { ...(theme.attributes || {}), ...(element.attributes || {}) }
+      attributes: Object.keys(mergedAttributes).length > 0 ? mergedAttributes : undefined
     };
+  }
+
+  private applyThemeToElement(element: RenderedElement): RenderedElement {
+    let themedElement = this.applyTheme(element);
+    
+    if (themedElement.children) {
+      themedElement = {
+        ...themedElement,
+        children: themedElement.children.map(child => this.applyThemeToElement(child))
+      };
+    }
+    
+    return themedElement;
   }
 
   feedLine(line: string): ParseResult {
@@ -305,6 +375,10 @@ export class MarkdownParser {
       return this.handleList(line, listInfo);
     }
 
+    if (this.isTableLine(line)) {
+      return this.handleTable(line);
+    }
+
     return this.handleParagraph(line);
   }
 
@@ -340,7 +414,8 @@ export class MarkdownParser {
           this.isCodeBlockStart(line) ||
           this.isHeading(trimmed) ||
           this.isBlockquote(line) ||
-          this.getListInfo(line)
+          this.getListInfo(line) ||
+          this.isTableLine(line)
         ) {
           return false;
         }
@@ -373,6 +448,14 @@ export class MarkdownParser {
         return false;
       }
 
+      case 'table': {
+        if (this.isTableLine(line)) {
+          this.state.buffer.push(line);
+          return true;
+        }
+        return false;
+      }
+
       default:
         // For custom block types, default to continuing the block by adding to buffer
         // Custom processors should handle termination via their canHandle logic
@@ -391,15 +474,16 @@ export class MarkdownParser {
         result = this.completeBlockquote();
       } else if (this.state.blockType === 'list') {
         result = this.completeList();
+      } else if (this.state.blockType === 'table') {
+        result = this.completeTable();
       } else if (this.state.blockType === 'code_block' || this.state.inCodeBlock) {
         result = this.completeIncompleteCodeBlock();
       } else {
         result = { type: 'need_next_token' };
       }
     } catch (error) {
-      console.error('Error completing block:', error);
       this.resetState();
-      return { type: 'need_next_token' };
+      return { type: 'need_next_token', error: error };
     }
 
     return result;
@@ -736,6 +820,115 @@ export class MarkdownParser {
 
   reset(): void {
     this.resetState();
+  }
+
+  private isTableLine(line: string): boolean {
+    const trimmed = line.trim();
+    // Must have at least one pipe character and not be empty
+    return trimmed.includes('|') && trimmed.length > 0;
+  }
+
+  private isTableSeparator(line: string): boolean {
+    const trimmed = line.trim();
+    // Table separator: | --- | --- | or |:---:|:---:| or --- | --- etc.
+    // Must contain at least one dash and be composed of valid separator chars
+    if (!trimmed.includes('-')) return false;
+    
+    // Remove leading/trailing pipes and check if valid separator pattern
+    const cleaned = trimmed.replace(/^\|/, '').replace(/\|$/, '');
+    const parts = cleaned.split('|');
+    
+    return parts.every(part => /^[\s\-:]+$/.test(part.trim()) && part.trim().includes('-'));
+  }
+
+  private handleTable(line: string): ParseResult {
+    this.state.blockType = 'table';
+    this.state.buffer = [line];
+    return { type: 'need_more_lines' };
+  }
+
+  private completeTable(): ParseResult {
+    if (this.state.buffer.length < 2) {
+      // Not enough lines for a table, fall back to paragraph
+      return this.completeParagraph();
+    }
+
+    const lines = this.state.buffer;
+    const headerLine = lines[0];
+    const possibleSeparatorLine = lines[1];
+
+    // Validate table structure
+    if (!this.isTableSeparator(possibleSeparatorLine)) {
+      // Not a valid table, fall back to paragraph
+      return this.completeParagraph();
+    }
+
+    // Parse headers and alignments
+    const headers = this.parseTableRow(headerLine);
+    const alignments = this.parseTableAlignments(possibleSeparatorLine);
+    
+    // Parse data rows (skip header and separator)
+    const dataRows = lines.slice(2).map(line => this.parseTableRow(line));
+
+    // Create table structure
+    const theadElement: RenderedElement = {
+      type: 'thead',
+      content: '',
+      children: [{
+        type: 'tr',
+        content: '',
+        children: headers.map((header, index) => ({
+          type: 'th',
+          content: this.parseInline(header),
+          attributes: alignments[index] && alignments[index] !== 'left' ? { style: `text-align: ${alignments[index]}` } : undefined
+        }))
+      }]
+    };
+
+    const tbodyElement: RenderedElement = {
+      type: 'tbody',
+      content: '',
+      children: dataRows.map(row => ({
+        type: 'tr',
+        content: '',
+        children: row.map((cell, index) => ({
+          type: 'td',
+          content: this.parseInline(cell),
+          attributes: alignments[index] && alignments[index] !== 'left' ? { style: `text-align: ${alignments[index]}` } : undefined
+        }))
+      }))
+    };
+
+    const element: RenderedElement = {
+      type: 'table',
+      content: '',
+      children: [this.applyThemeToElement(theadElement), this.applyThemeToElement(tbodyElement)]
+    };
+
+    return this.completeElement(element);
+  }
+
+  private parseTableRow(line: string): string[] {
+    const trimmed = line.trim();
+    // Remove leading and trailing pipes, then split by pipes
+    const cleaned = trimmed.replace(/^\|/, '').replace(/\|$/, '');
+    return cleaned.split('|').map(cell => cell.trim());
+  }
+
+  private parseTableAlignments(separatorLine: string): ('left' | 'center' | 'right')[] {
+    const trimmed = separatorLine.trim();
+    const cleaned = trimmed.replace(/^\|/, '').replace(/\|$/, '');
+    const separators = cleaned.split('|').map(sep => sep.trim());
+    
+    return separators.map(sep => {
+      if (sep.startsWith(':') && sep.endsWith(':')) {
+        return 'center';
+      } else if (sep.endsWith(':')) {
+        return 'right';
+      } else {
+        return 'left';
+      }
+    });
   }
 
   parse(markdown: string): RenderedElement[] {
