@@ -36,6 +36,7 @@ export interface Theme {
     item: ElementTheme;
   };
   emptyLine: ElementTheme;
+  image: ElementTheme;
   table: {
     table: ElementTheme;
     thead: ElementTheme;
@@ -48,6 +49,19 @@ export interface Theme {
 
 export interface ThemeProvider {
   getTheme(elementType: string, context?: Record<string, unknown>): ElementTheme;
+}
+
+export interface OutputFormatter<T = any> {
+  name: string;
+  format(elements: RenderedElement[]): T;
+  formatElement?(element: RenderedElement): any;
+}
+
+export interface FormatterOptions {
+  pretty?: boolean;
+  indentSize?: number;
+  attributeOrder?: string[];
+  customAttributes?: Record<string, string>;
 }
 
 export class DefaultThemeProvider implements ThemeProvider {
@@ -88,6 +102,8 @@ export class DefaultThemeProvider implements ThemeProvider {
         return this.theme.list.item;
       case 'empty_line':
         return this.theme.emptyLine;
+      case 'img':
+        return this.theme.image;
       case 'table':
         return this.theme.table.table;
       case 'thead':
@@ -108,51 +124,54 @@ export class DefaultThemeProvider implements ThemeProvider {
   private createDefaultTheme(): Theme {
     return {
       paragraph: {
-        classes: ['mb-4']
+        classes: ['my-1']
       },
       heading: {
         h1: {
-          classes: ['text-4xl', 'font-bold', 'mb-6']
+          classes: ['font-bold', 'my-1']
         },
         h2: {
-          classes: ['text-3xl', 'font-bold', 'mb-5']
+          classes: ['font-bold', 'my-1']
         },
         h3: {
-          classes: ['text-2xl', 'font-bold', 'mb-4']
+          classes: ['font-bold', 'my-1']
         },
         h4: {
-          classes: ['text-xl', 'font-bold', 'mb-3']
+          classes: ['font-bold', 'my-1']
         },
         h5: {
-          classes: ['text-lg', 'font-bold', 'mb-2']
+          classes: ['font-bold', 'my-1']
         },
         h6: {
-          classes: ['text-base', 'font-bold', 'mb-2']
+          classes: ['font-bold', 'my-1']
         }
       },
       codeBlock: {
-        classes: ['bg-gray-100', 'p-4', 'rounded-lg', 'font-mono', 'text-sm', 'overflow-x-auto']
+        classes: ['bg-gray-100', 'p-4', 'rounded-lg', 'font-mono', 'text-sm', 'overflow-x-auto', 'my-1']
       },
       blockquote: {
-        classes: ['border-l-4', 'border-gray-400', 'pl-4', 'italic', 'my-4']
+        classes: ['border-l-4', 'border-gray-400', 'pl-4', 'italic', 'my-1']
       },
       list: {
         ordered: {
-          classes: ['mb-4', 'list-decimal', 'list-inside']
+          classes: ['list-decimal', 'list-inside', 'my-1']
         },
         unordered: {
-          classes: ['mb-4', 'list-disc', 'list-inside']
+          classes: ['list-disc', 'list-inside', 'my-1']
         },
         item: {
-          classes: ['mb-1']
+          classes: ['my-0.5']
         }
       },
       emptyLine: {
-        classes: ['my-2']
+        classes: ['my-1']
+      },
+      image: {
+        classes: ['max-w-full', 'h-auto', 'my-1']
       },
       table: {
         table: {
-          classes: ['table-auto', 'border-collapse', 'border', 'border-gray-300', 'w-full', 'mb-4']
+          classes: ['table-auto', 'border-collapse', 'border', 'border-gray-300', 'w-full', 'my-1']
         },
         thead: {
           classes: ['bg-gray-50']
@@ -218,6 +237,13 @@ export class DefaultThemeProvider implements ThemeProvider {
       merged.emptyLine = { ...defaultTheme.emptyLine, ...customTheme.emptyLine };
     }
     
+    if (customTheme.image) {
+      merged.image = { 
+        classes: [...(defaultTheme.image.classes || []), ...(customTheme.image.classes || [])],
+        attributes: { ...(defaultTheme.image.attributes || {}), ...(customTheme.image.attributes || {}) }
+      };
+    }
+    
     if (customTheme.table) {
       merged.table = {
         ...defaultTheme.table,
@@ -277,11 +303,16 @@ export class MarkdownParser {
 
   private themeProvider: ThemeProvider;
 
+  private formatter: OutputFormatter;
+
   constructor(options?: {
     hooks?: Record<string, (element: RenderedElement) => RenderedElement>;
     themeProvider?: ThemeProvider;
     theme?: Partial<Theme>;
     enableThemeHook?: boolean;
+    formatter?: OutputFormatter;
+    enableBlankLines?: boolean;
+    enableImages?: boolean;
   }) {
     if (options?.hooks) {
       this.hooks = options.hooks;
@@ -292,6 +323,19 @@ export class MarkdownParser {
     // Add theme hook by default unless explicitly disabled
     if (options?.enableThemeHook !== false) {
       this.hooks['__theme__'] = (element: RenderedElement): RenderedElement => this.applyTheme(element);
+    }
+    
+    // Set formatter (default to JSON formatter)
+    this.formatter = options?.formatter || new JsonFormatter();
+    
+    // Add blank line processor by default unless explicitly disabled
+    if (options?.enableBlankLines !== false) {
+      this.addLineProcessor(blankLineProcessor);
+    }
+    
+    // Add image processor by default unless explicitly disabled
+    if (options?.enableImages !== false) {
+      this.addLineProcessor(imageProcessor);
     }
     
     // Sort processors by priority descending
@@ -419,8 +463,8 @@ export class MarkdownParser {
         ) {
           return false;
         }
-        this.state.buffer.push(line);
-        return true;
+        // Don't continue paragraphs - complete current paragraph and start new one
+        return false;
 
       case 'blockquote':
         if (this.isBlockquote(line)) {
@@ -562,10 +606,13 @@ export class MarkdownParser {
 
     const level = match[1].length;
     const content = match[2].trim();
+    
+    // Add circular level indicator before the content
+    const indicator = `<span class="heading-indicator">${level}</span>`;
 
     const element: RenderedElement = {
       type: `h${level}`,
-      content: this.parseInline(content)
+      content: indicator + this.parseInline(content)
     };
 
     return this.completeElement(element);
@@ -686,7 +733,7 @@ export class MarkdownParser {
   }
 
   private completeParagraph(): ParseResult {
-    const content = this.state.buffer.join('\n');
+    const content = this.state.buffer[0]; // Only one line per paragraph now
     const element: RenderedElement = {
       type: 'p',
       content: this.parseInline(content)
@@ -764,12 +811,26 @@ export class MarkdownParser {
         i++;
         continue;
       } else if (char === '[') {
-        // Link
+        // Link or Image
         if (current) {
           tokens.push(current);
           current = '';
         }
-        tokens.push('[');
+        // Check if this is an image (preceded by !)
+        if (i > 0 && text[i - 1] === '!') {
+          tokens.push('![');
+        } else {
+          tokens.push('[');
+        }
+        i++;
+        continue;
+      } else if (char === '!' && i + 1 < text.length && text[i + 1] === '[') {
+        // Image start
+        if (current) {
+          tokens.push(current);
+          current = '';
+        }
+        // Don't push anything here, let the '[' handler catch it
         i++;
         continue;
       } else {
@@ -786,8 +847,21 @@ export class MarkdownParser {
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'); // Bold first
     html = html.replace(/\*([^*]+?)\*/g, '<em>$1</em>'); // Italic after
     html = html.replace(/_([^_]+?)_/g, '<em>$1</em>');
-    html = html.replace(/`([^`]+?)`/g, '<code>$1</code>');
-    html = html.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, '<a href="$2">$1</a>');
+    
+    // Process code spans first to protect their content from other processing
+    const codeSpans: string[] = [];
+    html = html.replace(/`([^`]+?)`/g, (match, content) => {
+      const index = codeSpans.length;
+      codeSpans.push(`<code>${content}</code>`);
+      return `__CODE_SPAN_${index}__`;
+    });
+    
+    // Now process images and links (code content is protected)
+    html = html.replace(/!\[([^\]]*?)\]\(([^)]+?)\)/g, '<img src="$2" alt="$1" />'); // Images first
+    html = html.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, '<a href="$2">$1</a>'); // Links after
+    
+    // Restore code spans
+    html = html.replace(/__CODE_SPAN_(\d+)__/g, (match, index) => codeSpans[parseInt(index)]);
 
     return html;
   }
@@ -954,6 +1028,20 @@ export class MarkdownParser {
     }
     return tokens;
   }
+
+  setFormatter(formatter: OutputFormatter): void {
+    this.formatter = formatter;
+  }
+
+  format(elements?: RenderedElement[]): any {
+    const elementsToFormat = elements || this.parse('');
+    return this.formatter.format(elementsToFormat);
+  }
+
+  parseAndFormat(markdown: string): any {
+    const elements = this.parse(markdown);
+    return this.formatter.format(elements);
+  }
 }
 
 // Example: Blank Line Processor
@@ -985,6 +1073,146 @@ export const blankLineProcessor: LineProcessor = {
   }
 };
 
+// Example: Image Processor for standalone image lines
+export const imageProcessor: LineProcessor = {
+  name: 'image_handler',
+  priority: 90, // High priority to catch before paragraph handler
+  
+  canHandle: (lineInfo: LineInfo, state: ParserState) => {
+    // Only handle standalone image lines (not within code blocks)
+    if (state.inCodeBlock || state.blockType !== null) return false;
+    
+    // Check if line contains only an image (possibly with surrounding whitespace)
+    const imageRegex = /^\s*!\[([^\]]*?)\]\(([^)]+?)\)\s*$/;
+    return imageRegex.test(lineInfo.raw);
+  },
+  
+  process: (lineInfo: LineInfo, state: ParserState, parser: MarkdownParser) => {
+    const imageRegex = /^\s*!\[([^\]]*?)\]\(([^)]+?)\)\s*$/;
+    const match = lineInfo.raw.match(imageRegex);
+    
+    if (!match) {
+      return { type: 'need_next_token' };
+    }
+    
+    const [, alt, src] = match;
+    
+    const element: RenderedElement = {
+      type: 'img',
+      content: '',
+      attributes: {
+        src: src.trim(),
+        alt: alt.trim()
+      }
+    };
+    
+    return parser.completeElement(element);
+  }
+};
+
 // Usage example:
 // const parser = new MarkdownParser();
 // parser.addLineProcessor(blankLineProcessor);
+// parser.addLineProcessor(imageProcessor);
+
+// Built-in Formatters
+
+export class JsonFormatter implements OutputFormatter<RenderedElement[]> {
+  name = 'json';
+
+  constructor(private options: FormatterOptions = {}) {}
+
+  format(elements: RenderedElement[]): RenderedElement[] {
+    return elements;
+  }
+
+  formatElement(element: RenderedElement): RenderedElement {
+    return element;
+  }
+}
+
+export class HtmlFormatter implements OutputFormatter<string> {
+  name = 'html';
+
+  constructor(private options: FormatterOptions = {}) {}
+
+  format(elements: RenderedElement[]): string {
+    return elements.map(element => this.formatElement(element)).join('');
+  }
+
+  formatElement(element: RenderedElement): string {
+    const tag = element.type === 'code_block' ? 'pre' : element.type;
+    const classes = element.classes ? ` class="${element.classes.join(' ')}"` : '';
+    const attrs = element.attributes ? 
+      Object.entries(element.attributes)
+        .map(([key, value]) => ` ${key}="${this.escapeAttribute(value)}"`)
+        .join('') : '';
+    
+    // Handle self-closing tags
+    if (element.type === 'img') {
+      return `<${tag}${classes}${attrs} />`;
+    }
+    
+    // Handle empty lines as <br> tags
+    if (element.type === 'empty_line') {
+      return `<br${classes}${attrs} />`;
+    }
+    
+    if (element.children) {
+      const childrenHTML = element.children.map(child => this.formatElement(child)).join('');
+      return `<${tag}${classes}${attrs}>${childrenHTML}</${tag}>`;
+    } else {
+      const content = element.content || '';
+      if (element.type === 'code_block') {
+        return `<${tag}${classes}${attrs}><code>${this.escapeHtml(content)}</code></${tag}>`;
+      }
+      // For most content types, the content is already processed HTML from parseInline
+      // But we should escape raw text content that wasn't processed
+      const finalContent = this.shouldEscapeContent(element) ? this.escapeHtml(content) : content;
+      return `<${tag}${classes}${attrs}>${finalContent}</${tag}>`;
+    }
+  }
+
+  private escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private escapeAttribute(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;');
+  }
+
+  private shouldEscapeContent(element: RenderedElement): boolean {
+    // Elements that contain raw text that should be escaped
+    const rawTextElements = ['span', 'div', 'td', 'th'];
+    if (rawTextElements.includes(element.type)) {
+      return true;
+    }
+    
+    // If content doesn't contain HTML tags but has special characters, escape it
+    const content = element.content || '';
+    return !content.includes('<') && (content.includes('&') || content.includes('>') || content.includes('"'));
+  }
+}
+
+export class PrettyJsonFormatter implements OutputFormatter<string> {
+  name = 'pretty-json';
+
+  constructor(private options: FormatterOptions = {}) {}
+
+  format(elements: RenderedElement[]): string {
+    const indentSize = this.options.indentSize || 2;
+    return JSON.stringify(elements, null, indentSize);
+  }
+
+  formatElement(element: RenderedElement): string {
+    const indentSize = this.options.indentSize || 2;
+    return JSON.stringify(element, null, indentSize);
+  }
+}

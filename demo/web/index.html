@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MMM Parser Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #f5f5dc;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+        }
+        .demo-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            height: calc(100vh - 8rem);
+        }
+        .input-panel, .output-panel {
+            display: flex;
+            flex-direction: column;
+        }
+        textarea {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+            background-color: #2a2a2a;
+            color: #f5f5dc;
+            border-color: #3a3a3a;
+        }
+        textarea:focus {
+            border-color: #4a4a4a;
+            outline: none;
+        }
+        .output {
+            overflow-y: auto;
+            border: 1px solid #3a3a3a;
+            background-color: #2a2a2a;
+            color: #f5f5dc;
+        }
+        .example-btn {
+            @apply px-3 py-1 text-sm rounded transition-colors;
+            background-color: #3a3a3a;
+            color: #f5f5dc;
+            border: 1px solid #4a4a4a;
+        }
+        .example-btn:hover {
+            background-color: #4a4a4a;
+        }
+        .example-btn.active {
+            background-color: #5a5a5a;
+            border-color: #6a6a6a;
+        }
+        /* Handle empty line elements properly */
+        br.my-1 {
+            display: block;
+            margin: 0.25rem 0;
+            height: 0.5rem;
+        }
+        /* Dark theme styles for rendered content */
+        #rendered-output {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+        }
+        #rendered-output strong {
+            color: #f5f5dc;
+            font-weight: bold;
+        }
+        #rendered-output a {
+            color: #87ceeb;
+            text-decoration: underline;
+        }
+        #rendered-output code {
+            background-color: #3a3a3a;
+            color: #90ee90;
+            padding: 0.125rem 0.25rem;
+            border-radius: 0.25rem;
+        }
+        #rendered-output pre {
+            background-color: #2a2a2a !important;
+            border: 1px solid #3a3a3a;
+        }
+        #rendered-output pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        #rendered-output blockquote {
+            border-left-color: #5a5a5a;
+            color: #d3d3d3;
+        }
+        #rendered-output table {
+            border-color: #3a3a3a;
+        }
+        #rendered-output th, #rendered-output td {
+            border-color: #3a3a3a;
+        }
+        #rendered-output thead {
+            background-color: #2a2a2a !important;
+        }
+        #rendered-output tr {
+            border-color: #3a3a3a;
+        }
+        #json-output {
+            background-color: #2a2a2a;
+            color: #90ee90;
+            border-color: #3a3a3a;
+        }
+        details {
+            background-color: #2a2a2a;
+            border-color: #3a3a3a;
+        }
+        summary {
+            color: #f5f5dc;
+        }
+        summary:hover {
+            background-color: #3a3a3a;
+        }
+        /* Heading level indicators */
+        .heading-indicator {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.5rem;
+            height: 1.5rem;
+            background-color: #3a3a3a;
+            border: 1px solid #4a4a4a;
+            border-radius: 50%;
+            font-size: 0.75rem;
+            margin-right: 0.5rem;
+            color: #f5f5dc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mx-auto p-6">
+        <header class="mb-6">
+            <h1 class="text-2xl font-bold mb-2" style="color: #f5f5dc;">MMM Parser Demo</h1>
+            <p style="color: #d3d3d3;">Interactive demonstration of the Modular Markdown Machine parser</p>
+            
+            <div class="mt-4 flex flex-wrap gap-2">
+                <button class="example-btn active" data-example="simple">Simple</button>
+                <button class="example-btn" data-example="comprehensive">Comprehensive</button>
+                <button class="example-btn" data-example="tables">Tables</button>
+                <button class="example-btn" data-example="images">Images</button>
+                <button class="example-btn" data-example="custom">Live Editor</button>
+            </div>
+        </header>
+
+        <div class="demo-container">
+            <div class="input-panel">
+                <label class="block text-sm font-medium mb-2" style="color: #f5f5dc;">
+                    Markdown Input
+                </label>
+                <textarea 
+                    id="markdown-input" 
+                    class="flex-1 p-4 border border-gray-300 rounded-lg font-mono text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter your markdown here..."
+                ></textarea>
+            </div>
+            
+            <div class="output-panel">
+                <label class="block text-sm font-medium mb-2" style="color: #f5f5dc;">
+                    Rendered Output
+                </label>
+                <div id="rendered-output" class="flex-1 p-4 rounded-lg output max-w-none">
+                    <!-- Rendered content will appear here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-6">
+            <details class="bg-white rounded-lg border">
+                <summary class="p-4 font-medium cursor-pointer hover:bg-gray-50">
+                    View JSON Output
+                </summary>
+                <pre id="json-output" class="p-4 bg-gray-50 text-xs overflow-auto max-h-64 border-t">
+                    <!-- JSON output will appear here -->
+                </pre>
+            </details>
+        </div>
+    </div>
+
+    <!-- Load the ES Module and run demo -->
+    <script type="module">
+        import { MarkdownParser, HtmlFormatter } from '../../dist/mmm.js';
+        
+        // Examples data
+        const examples = {
+            simple: `# Simple Example
+
+This is a basic example showing the most common markdown features.
+
+
+## Text Formatting
+
+Regular text with **bold** and *italic* formatting.
+
+You can also use \`inline code\` and [links](https://example.com).
+
+
+## Lists
+
+- First item
+- Second item
+- Third item
+
+1. Numbered item
+2. Another numbered item
+
+
+## Code
+
+\`\`\`javascript
+console.log("Hello, World!");
+\`\`\`
+
+
+## Table
+
+| Name | Role |
+|------|------|
+| Alice | Developer |
+| Bob | Designer |`,
+
+            tables: `# Table Examples
+
+## Basic Table
+
+| Column 1 | Column 2 | Column 3 |
+|----------|----------|----------|
+| Cell 1   | Cell 2   | Cell 3   |
+| Data A   | Data B   | Data C   |
+
+## Table with Alignment
+
+| Left | Center | Right |
+|:-----|:------:|------:|
+| L1   | C1     | R1    |
+| L2   | C2     | R2    |
+
+## Table with Formatting
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| **Bold** | ✅ | Works great |
+| *Italic* | ✅ | Also supported |
+| \`Code\` | ✅ | Inline code works |
+| [Links](/) | ✅ | External links too |`,
+
+            comprehensive: `# Feature Showcase
+
+## Headings
+### Level 3
+#### Level 4
+
+## Text Formatting
+**Bold**, *italic*, \`code\`, and [links](https://example.com).
+
+## Lists
+- Item 1
+  - Nested item
+- Item 2
+
+1. Numbered
+2. List
+
+## Code Block
+\`\`\`javascript
+function demo() {
+    return "Hello, World!";
+}
+\`\`\`
+
+## Blockquote
+> This is a blockquote
+> with multiple lines
+
+## Table
+| Feature | Status |
+|---------|:------:|
+| Tables  | ✅     |
+| Code    | ✅     |`,
+
+            images: `# Image Support Demo
+
+## Standalone Images
+
+![Beautiful landscape](https://picsum.photos/600/300?random=1)
+
+![Mountain scenery](https://picsum.photos/500/250?random=2)
+
+## Inline Images
+
+This paragraph contains an inline image ![icon](https://picsum.photos/32/32?random=3) within the text.
+
+Mixed formatting: **Bold** with ![small image](https://picsum.photos/24/24?random=4) and *italic* text.
+
+## Images in Lists
+
+- ![Gallery 1](https://picsum.photos/150/100?random=5) First item
+- ![Gallery 2](https://picsum.photos/150/100?random=6) Second item
+- ![Gallery 3](https://picsum.photos/150/100?random=7) Third item
+
+## Images in Blockquotes
+
+> Here's a quote with an image:
+> 
+> ![Quote image](https://picsum.photos/400/200?random=8)
+> 
+> "A picture is worth a thousand words"
+
+## Images in Headings
+
+### Dashboard ![chart](https://picsum.photos/32/32?random=9)
+
+## Image Gallery
+
+![Grid 1](https://picsum.photos/200/150?random=10) ![Grid 2](https://picsum.photos/200/150?random=11)
+
+![Grid 3](https://picsum.photos/200/150?random=12) ![Grid 4](https://picsum.photos/200/150?random=13)
+
+## Images in Tables
+
+| Category | Preview | Description |
+|----------|---------|-------------|
+| Nature | ![nature](https://picsum.photos/80/60?random=14) | Landscapes |
+| Urban | ![city](https://picsum.photos/80/60?random=15) | City views |
+| Abstract | ![abstract](https://picsum.photos/80/60?random=16) | Digital art |`,
+
+            custom: ``
+        };
+
+        // Initialize parser with HTML formatter and default processors (image and blank line enabled by default)
+        const parser = new MarkdownParser({
+            formatter: new HtmlFormatter()
+        });
+        
+        // DOM elements
+        const input = document.getElementById('markdown-input');
+        const output = document.getElementById('rendered-output');
+        const jsonOutput = document.getElementById('json-output');
+        const exampleBtns = document.querySelectorAll('.example-btn');
+
+        // Also create a JSON parser for the JSON output
+        const jsonParser = new MarkdownParser();
+
+        // Parse and render markdown
+        function parseAndRender() {
+            const markdown = input.value;
+            try {
+                // Use the HTML formatter for rendered output
+                const html = parser.parseAndFormat(markdown);
+                output.innerHTML = html;
+                
+                // Use the JSON parser for JSON output
+                const jsonElements = jsonParser.parse(markdown);
+                jsonOutput.textContent = JSON.stringify(jsonElements, null, 2);
+            } catch (error) {
+                output.innerHTML = `<div class="text-red-600">Error: ${error.message}</div>`;
+                jsonOutput.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Event listeners
+        input.addEventListener('input', parseAndRender);
+
+        exampleBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Update active button
+                exampleBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                // Load example
+                const example = btn.dataset.example;
+                input.value = examples[example] || '';
+                parseAndRender();
+            });
+        });
+
+        // Load initial example
+        input.value = examples.simple;
+        parseAndRender();
+    </script>
+</body>
+</html>

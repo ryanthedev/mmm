@@ -15,6 +15,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run lint:fix` - Auto-fix ESLint issues
 - `npm run typecheck` - Type check without emitting
 - `npm run dev` - Watch mode TypeScript compilation
+- `npm run demo` - Start HTTP server for interactive demo at http://localhost:3000
+- `npm run build-browser` - Build browser-compatible version for demo
 
 **Important**: Always run `npm run lint` and `npm run typecheck` after making code changes to ensure quality.
 
@@ -24,10 +26,10 @@ This is a streaming markdown parser built as a single-file TypeScript module wit
 
 ### Core Components
 
-- **MarkdownParser** (`src/mmm.ts:41`) - Main parser class that processes markdown line by line
-- **LineProcessor** interface (`src/mmm.ts:34`) - Plugin system for extending parsing capability
-- **ParserState** (`src/mmm.ts:15`) - Tracks parser state across lines (block type, buffer, code blocks, lists)
-- **RenderedElement** (`src/mmm.ts:7`) - Output format with type, content, classes, and attributes
+- **MarkdownParser** (`src/mmm.ts:266`) - Main parser class that processes markdown line by line
+- **LineProcessor** interface (`src/mmm.ts:259`) - Plugin system for extending parsing capability
+- **ParserState** (`src/mmm.ts:238`) - Tracks parser state across lines (block type, buffer, code blocks, lists)
+- **RenderedElement** (`src/mmm.ts:8`) - Output format with type, content, classes, and attributes
 
 ### Key Design Patterns
 
@@ -38,7 +40,7 @@ This is a streaming markdown parser built as a single-file TypeScript module wit
 
 ### Plugin Architecture
 
-Built-in processors handle standard markdown (headings, paragraphs, code blocks, lists, blockquotes, tables). The system supports custom LineProcessors that can:
+Built-in processors handle standard markdown (headings, paragraphs, code blocks, lists, blockquotes, tables, images). The system supports custom LineProcessors that can:
 - Check if they can handle a line via `canHandle()`
 - Process the line and return `ParseResult`
 - Maintain state across multiple lines
@@ -76,5 +78,73 @@ All elements include Tailwind CSS classes by default for styling. The parser out
 - Code block state is tracked via both `state.inCodeBlock` and `state.blockType === 'code_block'`
 
 ### Built-in Processors
-- `blankLineProcessor` is available for import but not included by default
-- Add via `parser.addLineProcessor(blankLineProcessor)` to create `empty_line` elements
+- `blankLineProcessor` is **enabled by default**
+  - Creates `empty_line` elements for blank lines
+  - Disable via `new MarkdownParser({ enableBlankLines: false })`
+- `imageProcessor` is **enabled by default**
+  - Handles standalone image lines (`![alt](src)`) as `img` elements
+  - Disable via `new MarkdownParser({ enableImages: false })`
+  - Inline images are handled automatically by the `parseInline` method
+
+## Formatter System
+
+The parser supports pluggable output formatters to convert parsed elements into different formats.
+
+### Built-in Formatters
+
+- **JsonFormatter** (default) - Returns the `RenderedElement[]` array unchanged
+- **HtmlFormatter** - Converts elements to HTML string with proper escaping
+  - Empty lines render as `<br class="my-2" />` tags
+- **PrettyJsonFormatter** - Returns formatted JSON string with indentation
+
+### Using Formatters
+
+```typescript
+import { MarkdownParser, HtmlFormatter, PrettyJsonFormatter } from 'mmm';
+
+// Use formatter in constructor
+const parser = new MarkdownParser({
+  formatter: new HtmlFormatter()
+});
+
+// Or set formatter later
+parser.setFormatter(new PrettyJsonFormatter({ indentSize: 4 }));
+
+// Parse and format in one step
+const html = parser.parseAndFormat('# Hello\n\nWorld!');
+
+// Or format existing elements
+const elements = parser.parse('# Hello');
+const html = parser.format(elements);
+```
+
+### Custom Formatters
+
+Create custom formatters by implementing the `OutputFormatter` interface:
+
+```typescript
+import { OutputFormatter, RenderedElement } from 'mmm';
+
+class CustomFormatter implements OutputFormatter<string> {
+  name = 'custom';
+  
+  format(elements: RenderedElement[]): string {
+    return elements.map(el => `[${el.type}] ${el.content}`).join('\n');
+  }
+}
+
+parser.setFormatter(new CustomFormatter());
+```
+
+### Formatter Options
+
+Formatters can accept options for customization:
+
+```typescript
+interface FormatterOptions {
+  pretty?: boolean;
+  indentSize?: number;
+  attributeOrder?: string[];
+  customAttributes?: Record<string, string>;
+}
+```

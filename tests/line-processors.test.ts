@@ -1,16 +1,17 @@
 import { describe, beforeEach, test, expect } from 'vitest'
 import { MarkdownParser, LineProcessor, blankLineProcessor } from '../src/mmm';
+import { createMockParser } from './test-utils';
 
 describe('Line Processors', () => {
   let parser: MarkdownParser;
 
   beforeEach(() => {
-    parser = new MarkdownParser();
+    parser = createMockParser();
   });
 
   describe('Blank Line Processor', () => {
     beforeEach(() => {
-      parser.addLineProcessor(blankLineProcessor);
+      // Note: blank line processor is now enabled by default
     });
 
     test('should handle blank lines between paragraphs', () => {
@@ -42,7 +43,7 @@ describe('Line Processors', () => {
       const emptyLine = result.find(el => el.type === 'empty_line');
       
       expect(emptyLine).toBeDefined();
-      expect(emptyLine!.classes).toContain('my-2');
+      expect(emptyLine!.classes).toContain('test-empty-line');
       expect(emptyLine!.content).toBe('');
     });
 

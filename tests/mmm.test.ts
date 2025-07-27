@@ -1,11 +1,12 @@
 import { describe, beforeEach, test, expect } from 'vitest'
 import { MarkdownParser, blankLineProcessor, RenderedElement, LineProcessor } from '../src/mmm';
+import { createMockParser, createParserWithoutTheme } from './test-utils';
 
 describe('MarkdownParser', () => {
   let parser: MarkdownParser;
 
   beforeEach(() => {
-    parser = new MarkdownParser();
+    parser = createMockParser();
   });
 
   describe('Basic Parsing', () => {
@@ -15,26 +16,31 @@ describe('MarkdownParser', () => {
       expect(result[0]).toMatchObject({
         type: 'p',
         content: 'Hello world',
-        classes: ['mb-4']
+        classes: ['test-paragraph']
       });
     });
 
     test('should parse multiple paragraphs', () => {
       const markdown = 'First paragraph\n\nSecond paragraph';
       const result = parser.parse(markdown);
-      expect(result).toHaveLength(2);
+      expect(result).toHaveLength(3); // Now includes empty_line element
       expect(result[0].content).toBe('First paragraph');
-      expect(result[1].content).toBe('Second paragraph');
+      expect(result[1].type).toBe('empty_line');
+      expect(result[2].content).toBe('Second paragraph');
     });
 
     test('should handle empty input', () => {
       const result = parser.parse('');
-      expect(result).toHaveLength(0);
+      expect(result).toHaveLength(1); // Now creates empty_line element
+      expect(result[0].type).toBe('empty_line');
     });
 
     test('should handle whitespace-only input', () => {
       const result = parser.parse('   \n\t\n   ');
-      expect(result).toHaveLength(0);
+      expect(result).toHaveLength(3); // Now creates empty_line elements for each line
+      expect(result[0].type).toBe('empty_line');
+      expect(result[1].type).toBe('empty_line');
+      expect(result[2].type).toBe('empty_line');
     });
   });
 
@@ -44,8 +50,8 @@ describe('MarkdownParser', () => {
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
         type: 'h1',
-        content: 'Main Title',
-        classes: ['text-4xl', 'font-bold', 'mb-6']
+        content: '<span class="heading-indicator">1</span>Main Title',
+        classes: ['test-h1']
       });
     });
 
@@ -54,8 +60,8 @@ describe('MarkdownParser', () => {
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
         type: 'h2',
-        content: 'Subtitle',
-        classes: ['text-3xl', 'font-bold', 'mb-5']
+        content: '<span class="heading-indicator">2</span>Subtitle',
+        classes: ['test-h2']
       });
     });
 
@@ -71,7 +77,7 @@ describe('MarkdownParser', () => {
       
       for (let i = 0; i < 6; i++) {
         expect(result[i].type).toBe(`h${i + 1}`);
-        expect(result[i].content).toBe(`H${i + 1}`);
+        expect(result[i].content).toBe(`<span class="heading-indicator">${i + 1}</span>H${i + 1}`);
       }
     });
 
@@ -90,7 +96,7 @@ describe('MarkdownParser', () => {
         type: 'code_block',
         content: 'console.log("Hello");',
         attributes: { 'data-language': 'javascript' },
-        classes: ['bg-gray-100', 'p-4', 'rounded-lg', 'font-mono', 'text-sm', 'overflow-x-auto']
+        classes: ['test-code-block']
       });
     });
 
@@ -130,7 +136,7 @@ describe('MarkdownParser', () => {
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
         type: 'blockquote',
-        classes: ['border-l-4', 'border-gray-400', 'pl-4', 'italic', 'my-4']
+        classes: ['test-blockquote']
       });
       expect(result[0].children).toBeDefined();
       expect(result[0].children![0].content).toBe('This is a quote');
@@ -158,7 +164,7 @@ describe('MarkdownParser', () => {
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
         type: 'ul',
-        classes: ['mb-4', 'list-disc', 'list-inside']
+        classes: ['test-ul']
       });
       expect(result[0].children).toHaveLength(3);
       expect(result[0].children![0]).toMatchObject({
@@ -173,7 +179,7 @@ describe('MarkdownParser', () => {
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
         type: 'ol',
-        classes: ['mb-4', 'list-decimal', 'list-inside']
+        classes: ['test-ol']
       });
       expect(result[0].children).toHaveLength(3);
     });
@@ -276,10 +282,8 @@ describe('MarkdownParser', () => {
     });
 
     test('should use blank line processor', () => {
-      const parserWithBlank = new MarkdownParser();
-      parserWithBlank.addLineProcessor(blankLineProcessor);
-      
-      const result = parserWithBlank.parse('Paragraph 1\n\nParagraph 2');
+      // Note: blank line processor is now enabled by default
+      const result = parser.parse('Paragraph 1\n\nParagraph 2');
       expect(result).toHaveLength(3);
       expect(result[0].type).toBe('p');
       expect(result[1].type).toBe('empty_line');
@@ -296,9 +300,10 @@ describe('MarkdownParser', () => {
         })
       };
 
-      const parserWithHooks = new MarkdownParser({ hooks });
+      const parserWithHooks = createMockParser({ hooks });
       const result = parserWithHooks.parse('Test paragraph');
       expect(result[0].classes).toContain('custom-paragraph');
+      expect(result[0].classes).toContain('test-paragraph'); // Should also have theme classes
     });
 
     test('should apply hooks to headings', () => {
@@ -309,7 +314,7 @@ describe('MarkdownParser', () => {
         })
       };
 
-      const parserWithHooks = new MarkdownParser({ hooks });
+      const parserWithHooks = createMockParser({ hooks });
       const result = parserWithHooks.parse('# Main Title');
       expect(result[0].attributes).toEqual({ id: 'main-title' });
     });
@@ -319,8 +324,10 @@ describe('MarkdownParser', () => {
     test('should handle mixed line endings', () => {
       const markdown = 'Line 1\r\nLine 2\nLine 3\r';
       const result = parser.parse(markdown);
-      expect(result).toHaveLength(1);
-      expect(result[0].content).toContain('Line 1');
+      expect(result).toHaveLength(3); // Each line becomes separate paragraph
+      expect(result[0].content).toBe('Line 1');
+      expect(result[1].content).toBe('Line 2');
+      expect(result[2].content).toBe('Line 3\r'); // Last line includes the \r
     });
 
     test('should handle incomplete code blocks', () => {

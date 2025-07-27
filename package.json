@@ -5,8 +5,15 @@
   "type": "module",
   "main": "dist/mmm.js",
   "types": "dist/mmm.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/mmm.js",
+      "types": "./dist/mmm.d.ts"
+    }
+  },
   "scripts": {
     "build": "tsc",
+    "package": "node scripts/package.js",
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
@@ -15,7 +22,8 @@
     "lint:fix": "eslint src/**/*.ts --fix",
     "typecheck": "tsc --noEmit",
     "dev": "tsc --watch",
-    "prepublishOnly": "npm run build"
+    "demo": "node demo/serve.js",
+    "prepublishOnly": "npm run package"
   },
   "keywords": [
     "markdown",

@@ -132,9 +132,10 @@ This is not a separator`;
 This is a paragraph.`;
 
     const result = parser.parse(markdown);
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(3); // Now includes empty_line element
     expect(result[0].type).toBe('table');
-    expect(result[1].type).toBe('p');
-    expect(result[1].content).toBe('This is a paragraph.');
+    expect(result[1].type).toBe('empty_line');
+    expect(result[2].type).toBe('p');
+    expect(result[2].content).toBe('This is a paragraph.');
   });
 });

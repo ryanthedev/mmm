@@ -8,8 +8,8 @@ describe('Theming System', () => {
     
     expect(result[0]).toMatchObject({
       type: 'h1',
-      content: 'Hello World',
-      classes: ['text-4xl', 'font-bold', 'mb-6']
+      content: '<span class="heading-indicator">1</span>Hello World',
+      classes: ['font-bold', 'my-1']
     });
   });
 
@@ -114,8 +114,8 @@ describe('Theming System', () => {
     
     expect(result[0]).toMatchObject({
       type: 'h1',
-      content: 'Hello World',
-      classes: ['text-4xl', 'font-bold', 'mb-6', 'custom-heading'],
+      content: '<span class="heading-indicator">1</span>Hello World',
+      classes: ['font-bold', 'my-1', 'custom-heading'],
       attributes: { id: 'main-title' }
     });
   });
