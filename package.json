@@ -3,27 +3,25 @@
   "version": "1.0.0",
   "description": "A streaming markdown parser with plugin support",
   "type": "module",
-  "main": "dist/mmm.js",
-  "types": "dist/mmm.d.ts",
+  "main": "dist/mmmv2.cjs.js",
+  "module": "dist/mmmv2.es.js",
+  "types": "dist/mmmv2.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/mmm.js",
-      "types": "./dist/mmm.d.ts"
+      "types": "./dist/mmmv2.d.ts",
+      "import": "./dist/mmmv2.es.js",
+      "require": "./dist/mmmv2.cjs.js"
     }
   },
   "scripts": {
-    "build": "tsc",
-    "package": "node scripts/package.js",
+    "build": "vite build && tsc --emitDeclarationOnly",
+    "dev": "vite build --watch",
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
     "test:ui": "vitest --ui",
-    "lint": "eslint src/**/*.ts",
-    "lint:fix": "eslint src/**/*.ts --fix",
     "typecheck": "tsc --noEmit",
-    "dev": "tsc --watch",
-    "demo": "node demo/serve.js",
-    "prepublishOnly": "npm run package"
+    "preview": "vite preview"
   },
   "keywords": [
     "markdown",
@@ -34,13 +32,9 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^20.6.0",
-    "@typescript-eslint/eslint-plugin": "^8.38.0",
-    "@typescript-eslint/parser": "^8.38.0",
+    "@types/node": "^20.19.9",
     "@vitest/ui": "^3.2.4",
-    "eslint": "^9.32.0",
-    "typescript": "^5.2.2",
-    "typescript-eslint": "^8.38.0",
+    "typescript": "^5.9.2",
     "vite": "^7.0.6",
     "vitest": "^3.2.4"
   },

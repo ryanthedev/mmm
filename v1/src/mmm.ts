@@ -124,69 +124,69 @@ export class DefaultThemeProvider implements ThemeProvider {
   private createDefaultTheme(): Theme {
     return {
       paragraph: {
-        classes: ['my-1']
+        classes: ['']
       },
       heading: {
         h1: {
-          classes: ['font-bold', 'my-1']
+          classes: ['font-bold']
         },
         h2: {
-          classes: ['font-bold', 'my-1']
+          classes: ['font-bold']
         },
         h3: {
-          classes: ['font-bold', 'my-1']
+          classes: ['font-bold']
         },
         h4: {
-          classes: ['font-bold', 'my-1']
+          classes: ['font-bold']
         },
         h5: {
-          classes: ['font-bold', 'my-1']
+          classes: ['font-bold']
         },
         h6: {
-          classes: ['font-bold', 'my-1']
+          classes: ['font-bold']
         }
       },
       codeBlock: {
-        classes: ['bg-gray-100', 'p-4', 'rounded-lg', 'font-mono', 'text-sm', 'overflow-x-auto', 'my-1']
+        classes: []
       },
       blockquote: {
-        classes: ['border-l-4', 'border-gray-400', 'pl-4', 'italic', 'my-1']
+        classes: []
       },
       list: {
         ordered: {
-          classes: ['list-decimal', 'list-inside', 'my-1']
+          classes: ['list-decimal', 'list-inside']
         },
         unordered: {
-          classes: ['list-disc', 'list-inside', 'my-1']
+          classes: ['list-disc', 'list-inside']
         },
         item: {
-          classes: ['my-0.5']
+          classes: []
         }
       },
       emptyLine: {
-        classes: ['my-1']
+        classes: []
       },
       image: {
-        classes: ['max-w-full', 'h-auto', 'my-1']
+        classes: ['max-w-full', 'h-auto']
       },
       table: {
         table: {
-          classes: ['table-auto', 'border-collapse', 'border', 'border-gray-300', 'w-full', 'my-1']
+          classes: ['table-auto', 'border-collapse', 'border', 'border-gray-300', 'w-full']
         },
         thead: {
-          classes: ['bg-gray-50']
+          classes: []
         },
         tbody: {
           classes: []
         },
         tr: {
-          classes: ['border-b', 'border-gray-200']
+          classes: []
         },
         th: {
-          classes: ['px-4', 'py-2', 'text-left', 'font-semibold', 'border-r', 'border-gray-300']
+          classes: []
         },
         td: {
-          classes: ['px-4', 'py-2', 'border-r', 'border-gray-300']
+          classes: []
         }
       }
     };
@@ -606,13 +606,10 @@ export class MarkdownParser {
 
     const level = match[1].length;
     const content = match[2].trim();
-    
-    // Add circular level indicator before the content
-    const indicator = `<span class="heading-indicator">${level}</span>`;
 
     const element: RenderedElement = {
       type: `h${level}`,
-      content: indicator + this.parseInline(content)
+      content: this.parseInline(content)
     };
 
     return this.completeElement(element);
@@ -810,6 +807,15 @@ export class MarkdownParser {
         tokens.push('`');
         i++;
         continue;
+      } else if (char === ':') {
+        // Potential emoji syntax
+        if (current) {
+          tokens.push(current);
+          current = '';
+        }
+        tokens.push(':');
+        i++;
+        continue;
       } else if (char === '[') {
         // Link or Image
         if (current) {
@@ -843,25 +849,37 @@ export class MarkdownParser {
     // Now process tokens with proper nesting
     // This is simplified; for full nesting, a stack-based parser is better
     let html = tokens.join('');
-    // Apply replacements in order to handle some nesting: bold first, then italic
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'); // Bold first
-    html = html.replace(/\*([^*]+?)\*/g, '<em>$1</em>'); // Italic after
-    html = html.replace(/_([^_]+?)_/g, '<em>$1</em>');
     
     // Process code spans first to protect their content from other processing
     const codeSpans: string[] = [];
     html = html.replace(/`([^`]+?)`/g, (match, content) => {
       const index = codeSpans.length;
       codeSpans.push(`<code>${content}</code>`);
-      return `__CODE_SPAN_${index}__`;
+      return `\x00CODE${index}\x00`;
     });
+    
+    // Process emoji syntax before other inline elements to prevent conflicts
+    const emojiSpans: string[] = [];
+    html = html.replace(/:([a-zA-Z0-9_+-]+):/g, (match, emojiName) => {
+      const index = emojiSpans.length;
+      emojiSpans.push(`<span class="emoji" data-emoji="${emojiName}">${match}</span>`);
+      return `\x00EMOJI${index}\x00`;
+    });
+    
+    // Apply replacements in order to handle some nesting: bold first, then italic
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'); // Bold first
+    html = html.replace(/\*([^*]+?)\*/g, '<em>$1</em>'); // Italic after
+    html = html.replace(/_([^_]+?)_/g, '<em>$1</em>');
     
     // Now process images and links (code content is protected)
     html = html.replace(/!\[([^\]]*?)\]\(([^)]+?)\)/g, '<img src="$2" alt="$1" />'); // Images first
     html = html.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, '<a href="$2">$1</a>'); // Links after
     
+    // Restore emoji spans
+    html = html.replace(/\x00EMOJI(\d+)\x00/g, (match, index) => emojiSpans[parseInt(index)]);
+    
     // Restore code spans
-    html = html.replace(/__CODE_SPAN_(\d+)__/g, (match, index) => codeSpans[parseInt(index)]);
+    html = html.replace(/\x00CODE(\d+)\x00/g, (match, index) => codeSpans[parseInt(index)]);
 
     return html;
   }

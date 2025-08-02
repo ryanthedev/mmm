@@ -1,31 +1,26 @@
-/// <reference types="vitest" />
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    globals: true,
     environment: 'node',
-    include: [
-      'src/**/__tests__/**/*.ts',
-      'tests/**/*.{test,spec}.ts'
-    ],
+    include: ['tests/**/*.{test,spec}.ts'],
+    exclude: ['v1/**', 'node_modules', 'dist'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'lcov', 'html'],
-      include: ['src/**/*.ts'],
-      exclude: [
-        'node_modules/',
-        'dist/',
-        'tests/',
-        '**/*.d.ts',
-        '**/*.config.*',
-      ],
+      reporter: ['text', 'json', 'html'],
       thresholds: {
         branches: 80,
         functions: 80,
         lines: 80,
         statements: 80
-      }
+      },
+      exclude: [
+        'node_modules',
+        'dist',
+        'v1',
+        '**/*.config.ts',
+        '**/*.d.ts'
+      ]
     }
   }
-})
+});
