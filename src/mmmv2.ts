@@ -21,6 +21,7 @@ export interface TokenHook {
 export interface ParserConfig {
   plugins?: ParsePlugin[];
   hooks?: TokenHook[];
+  emojiManager?: EmojiManager;
 }
 
 export enum TokenType {
@@ -33,6 +34,7 @@ export enum TokenType {
   HIGHLIGHT = 'highlight',
   SUBSCRIPT = 'subscript',
   SUPERSCRIPT = 'superscript',
+  CURSOR = 'cursor',
   LINK = 'link',
   IMAGE = 'image',
   H1 = 'h1',
@@ -51,10 +53,129 @@ export enum TokenType {
   TABLE_SEPARATOR = 'table_separator',
   FOOTNOTE_REF = 'footnote_ref',
   FOOTNOTE_DEF = 'footnote_def',
-  EMPTY_LINE = 'empty_line'
+  EMPTY_LINE = 'empty_line',
+  EMOJI = 'emoji'
 }
 
-function parseInline(text: string): Token[] {
+export interface EmojiMapping {
+  [shortcode: string]: string;
+}
+
+export class EmojiManager {
+  private mappings: EmojiMapping = {};
+
+  constructor(mappings?: EmojiMapping) {
+    if (mappings) {
+      this.mappings = { ...mappings };
+    }
+  }
+
+  addEmoji(shortcode: string, emoji: string): void {
+    this.mappings[shortcode] = emoji;
+  }
+
+  removeEmoji(shortcode: string): void {
+    delete this.mappings[shortcode];
+  }
+
+  hasEmoji(shortcode: string): boolean {
+    return shortcode in this.mappings;
+  }
+
+  getEmoji(shortcode: string): string | undefined {
+    return this.mappings[shortcode];
+  }
+
+  getAllMappings(): EmojiMapping {
+    return { ...this.mappings };
+  }
+
+  setMappings(mappings: EmojiMapping): void {
+    this.mappings = { ...mappings };
+  }
+
+  clearMappings(): void {
+    this.mappings = {};
+  }
+}
+
+
+export function getDefaultEmojiMappings(): EmojiMapping {
+  return {
+    // Common emojis
+    'smile': '😊',
+    'joy': '😂',
+    'heart': '❤️',
+    'thumbs_up': '👍',
+    'thumbs_down': '👎',
+    'fire': '🔥',
+    'star': '⭐',
+    'rocket': '🚀',
+    'tada': '🎉',
+    'clap': '👏',
+    'wave': '👋',
+    'eyes': '👀',
+    'thinking': '🤔',
+    'wink': '😉',
+    'confused': '😕',
+    'cry': '😢',
+    'angry': '😠',
+    'cool': '😎',
+    'sleeping': '😴',
+    'sick': '🤒',
+    // Food & drink
+    'pizza': '🍕',
+    'burger': '🍔',
+    'coffee': '☕',
+    'beer': '🍺',
+    'cake': '🎂',
+    // Animals
+    'cat': '🐱',
+    'dog': '🐶',
+    'unicorn': '🦄',
+    'lion': '🦁',
+    'tiger': '🐅',
+    // Nature
+    'sun': '☀️',
+    'moon': '🌙',
+    'rainbow': '🌈',
+    'tree': '🌳',
+    'flower': '🌸',
+    // Objects
+    'car': '🚗',
+    'plane': '✈️',
+    'house': '🏠',
+    'phone': '📞',
+    'computer': '💻',
+    // Symbols
+    'check': '✅',
+    'cross': '❌',
+    'warning': '⚠️',
+    'info': 'ℹ️',
+    'question': '❓'
+  };
+}
+
+export function createEmojiManagerWithNodeEmoji(): EmojiManager {
+  try {
+    // Try to import node-emoji if available
+    const nodeEmoji = require('node-emoji');
+    const mappings: EmojiMapping = {};
+    
+    // Get all emoji from node-emoji
+    const emojiLib = nodeEmoji.emoji;
+    for (const [shortcode, emoji] of Object.entries(emojiLib)) {
+      mappings[shortcode] = emoji as string;
+    }
+    
+    return new EmojiManager(mappings);
+  } catch (error) {
+    // Fall back to default mappings if node-emoji is not available
+    return new EmojiManager(getDefaultEmojiMappings());
+  }
+}
+
+function parseInline(text: string, emojiManager?: EmojiManager): Token[] {
   const tokens: Token[] = [];
   let remaining = text;
   let currentIndex = 0;
@@ -80,23 +201,76 @@ function parseInline(text: string): Token[] {
       }
     }
 
-    // Handle image ![alt](url "title")
-    const imageMatch = remaining.slice(currentIndex).match(/^!\[(.*?)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/);
-    if (imageMatch) {
-      const altText = imageMatch[1] || '';
-      const src = imageMatch[2];
-      const title = imageMatch[3] || '';
+    // Handle emoji :shortcode:
+    if (!matched && emojiManager && remaining[currentIndex] === ':') {
+      const nextColonIndex = remaining.indexOf(':', currentIndex + 1);
+      if (nextColonIndex !== -1) {
+        const shortcode = remaining.slice(currentIndex + 1, nextColonIndex);
+        
+        // Check if it's a valid shortcode (alphanumeric, underscore, hyphen, not empty)
+        if (/^[a-zA-Z0-9_-]+$/.test(shortcode) && emojiManager.hasEmoji(shortcode)) {
+          const emoji = emojiManager.getEmoji(shortcode);
+          if (emoji) {
+            if (currentIndex > 0) {
+              tokens.push({ type: TokenType.TEXT, content: remaining.slice(0, currentIndex) });
+            }
+            tokens.push({
+              type: TokenType.EMOJI,
+              content: emoji,
+              metadata: { shortcode }
+            });
+            remaining = remaining.slice(nextColonIndex + 1);
+            currentIndex = 0;
+            matched = true;
+          }
+        }
+      }
+    }
+
+    // Handle cursor @!
+    if (!matched && remaining.slice(currentIndex, currentIndex + 2) === '@!') {
       if (currentIndex > 0) {
         tokens.push({ type: TokenType.TEXT, content: remaining.slice(0, currentIndex) });
       }
-      tokens.push({
-        type: TokenType.IMAGE,
-        children: parseInline(altText),
-        metadata: { src, title }
+      
+      // Capture the next character after @! (if it exists)
+      const nextCharIndex = currentIndex + 2;
+      let cursorContent = '';
+      let consumeLength = 2; // Start with @! length
+      
+      if (nextCharIndex < remaining.length) {
+        cursorContent = remaining[nextCharIndex] || '';
+        consumeLength = 3; // @! + one character
+      }
+      
+      tokens.push({ 
+        type: TokenType.CURSOR, 
+        content: cursorContent 
       });
-      remaining = remaining.slice(currentIndex + imageMatch[0].length);
+      remaining = remaining.slice(currentIndex + consumeLength);
       currentIndex = 0;
       matched = true;
+    }
+
+    // Handle image ![alt](url "title")
+    if (!matched) {
+      const imageMatch = remaining.slice(currentIndex).match(/^!\[(.*?)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/);
+      if (imageMatch) {
+        const altText = imageMatch[1] || '';
+        const src = imageMatch[2];
+        const title = imageMatch[3] || '';
+        if (currentIndex > 0) {
+          tokens.push({ type: TokenType.TEXT, content: remaining.slice(0, currentIndex) });
+        }
+        tokens.push({
+          type: TokenType.IMAGE,
+          children: parseInline(altText, emojiManager),
+          metadata: { src, title }
+        });
+        remaining = remaining.slice(currentIndex + imageMatch[0].length);
+        currentIndex = 0;
+        matched = true;
+      }
     }
 
     // Handle footnote reference [^id]
@@ -128,7 +302,7 @@ function parseInline(text: string): Token[] {
         }
         tokens.push({
           type: TokenType.LINK,
-          children: parseInline(linkText),
+          children: parseInline(linkText, emojiManager),
           metadata: { href, title }
         });
         remaining = remaining.slice(currentIndex + linkMatch[0].length);
@@ -149,7 +323,7 @@ function parseInline(text: string): Token[] {
         }
         tokens.push({
           type: TokenType.IMAGE,
-          children: parseInline(alt),
+          children: parseInline(alt, emojiManager),
           metadata: { src, title: '' }
         });
         remaining = remaining.slice(currentIndex + imageCardMatch[0].length);
@@ -225,7 +399,7 @@ function parseInline(text: string): Token[] {
         }
         tokens.push({
           type: TokenType.BOLD,
-          children: parseInline(remaining.slice(currentIndex + 2, endIndex))
+          children: parseInline(remaining.slice(currentIndex + 2, endIndex), emojiManager)
         });
         remaining = remaining.slice(endIndex + 2);
         currentIndex = 0;
@@ -242,7 +416,7 @@ function parseInline(text: string): Token[] {
         }
         tokens.push({
           type: TokenType.BOLD,
-          children: parseInline(remaining.slice(currentIndex + 2, endIndex))
+          children: parseInline(remaining.slice(currentIndex + 2, endIndex), emojiManager)
         });
         remaining = remaining.slice(endIndex + 2);
         currentIndex = 0;
@@ -276,7 +450,7 @@ function parseInline(text: string): Token[] {
         }
         tokens.push({
           type: TokenType.ITALIC,
-          children: parseInline(remaining.slice(currentIndex + 1, endIndex))
+          children: parseInline(remaining.slice(currentIndex + 1, endIndex), emojiManager)
         });
         remaining = remaining.slice(endIndex + 1);
         currentIndex = 0;
@@ -293,7 +467,7 @@ function parseInline(text: string): Token[] {
         }
         tokens.push({
           type: TokenType.ITALIC,
-          children: parseInline(remaining.slice(currentIndex + 1, endIndex))
+          children: parseInline(remaining.slice(currentIndex + 1, endIndex), emojiManager)
         });
         remaining = remaining.slice(endIndex + 1);
         currentIndex = 0;
@@ -345,12 +519,13 @@ function parseInline(text: string): Token[] {
     tokens.push({ type: TokenType.TEXT, content: remaining });
   }
 
-  return tokens.filter(t => t.content || t.children?.length);  // Filter empty
+  return tokens.filter(t => t.content || t.children?.length || t.type === TokenType.CURSOR);  // Filter empty, but keep cursor tokens
 }
 
 export class TokenParser {
   private plugins: ParsePlugin[] = [];
   private hooks: Map<string, TokenHook[]> = new Map();
+  private emojiManager?: EmojiManager;
 
   constructor(config?: ParserConfig) {
     if (config?.plugins) {
@@ -360,6 +535,9 @@ export class TokenParser {
       for (const hook of config.hooks) {
         this.addHook(hook);
       }
+    }
+    if (config?.emojiManager) {
+      this.emojiManager = config.emojiManager;
     }
   }
 
@@ -421,7 +599,7 @@ export class TokenParser {
     // Try plugins first (in priority order)
     for (const plugin of this.plugins) {
       if (plugin.canHandle(line)) {
-        const result = plugin.parse(line, parseInline);
+        const result = plugin.parse(line, (text: string) => parseInline(text, this.emojiManager));
         if (result !== null) {
           // Apply hooks to the result
           return result.map(token => this.processTokenRecursively(token));
@@ -430,13 +608,13 @@ export class TokenParser {
     }
 
     // Fall back to built-in parsing and apply hooks
-    const tokens = parseBuiltIn(line);
+    const tokens = parseBuiltIn(line, this.emojiManager);
     return tokens.map(token => this.processTokenRecursively(token));
   }
 }
 
 // Built-in parsing logic (extracted from original parse function)
-function parseBuiltIn(line: string): Token[] {
+function parseBuiltIn(line: string, emojiManager?: EmojiManager): Token[] {
   let tokens: Token[] = [];
 
   // Check for empty line (empty string, whitespace only, or newlines)
@@ -445,7 +623,7 @@ function parseBuiltIn(line: string): Token[] {
   }
 
   // Check for code fence
-  const codeFenceMatch = line.match(/^```(\w+)?\s*$/);
+  const codeFenceMatch = line.match(/^```\s*(\w+)?\s*$/);
   if (codeFenceMatch) {
     const token: Token = {
       type: TokenType.CODE_FENCE,
@@ -476,7 +654,7 @@ function parseBuiltIn(line: string): Token[] {
     return [{
       type: TokenType.FOOTNOTE_DEF,
       metadata: { id },
-      children: parseInline(content)
+      children: parseInline(content, emojiManager)
     }];
   }
 
@@ -489,7 +667,7 @@ function parseBuiltIn(line: string): Token[] {
     const blockquoteToken: Token = {
       type: TokenType.BLOCKQUOTE,
       metadata: { level },
-      children: parseInline(content)
+      children: parseInline(content, emojiManager)
     };
     return [blockquoteToken];
   }
@@ -502,7 +680,7 @@ function parseBuiltIn(line: string): Token[] {
     const content = headingMatch[2] || '';
     const token: Token = {
       type: headingType,
-      children: parseInline(content)
+      children: parseInline(content, emojiManager)
     };
     if (headingMatch[3]) {
       token.metadata = { id: headingMatch[3] };
@@ -536,7 +714,7 @@ function parseBuiltIn(line: string): Token[] {
     return [{
       type,
       metadata,
-      children: parseInline(content)
+      children: parseInline(content, emojiManager)
     }];
   }
 
@@ -563,7 +741,7 @@ function parseBuiltIn(line: string): Token[] {
           type: TokenType.TABLE_ROW,
           children: cells.map(cell => ({
             type: TokenType.TABLE_CELL,
-            children: parseInline(cell)
+            children: parseInline(cell, emojiManager)
           }))
         }];
       }
@@ -571,7 +749,7 @@ function parseBuiltIn(line: string): Token[] {
   }
 
   // Default to inline parsing for paragraphs/text
-  tokens = parseInline(line);
+  tokens = parseInline(line, emojiManager);
 
   // If only one text token, return it directly
   if (tokens.length === 1 && tokens[0]?.type === TokenType.TEXT) {
@@ -582,6 +760,6 @@ function parseBuiltIn(line: string): Token[] {
 }
 
 // Backward compatibility: original parse function
-export function parse(line: string): Token[] {
-  return parseBuiltIn(line);
+export function parse(line: string, emojiManager?: EmojiManager): Token[] {
+  return parseBuiltIn(line, emojiManager);
 }

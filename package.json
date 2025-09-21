@@ -3,14 +3,24 @@
   "version": "1.0.0",
   "description": "A streaming markdown parser with plugin support",
   "type": "module",
-  "main": "dist/mmmv2.cjs.js",
-  "module": "dist/mmmv2.es.js",
-  "types": "dist/mmmv2.d.ts",
+  "main": "dist/mmm.cjs",
+  "module": "dist/mmm.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/mmm.js",
+      "require": "./dist/mmm.cjs"
+    },
+    "./formatters": {
+      "types": "./dist/formatters.d.ts",
+      "import": "./dist/formatters.js",
+      "require": "./dist/formatters.cjs"
+    },
+    "./parser": {
       "types": "./dist/mmmv2.d.ts",
-      "import": "./dist/mmmv2.es.js",
-      "require": "./dist/mmmv2.cjs.js"
+      "import": "./dist/mmmv2.js",
+      "require": "./dist/mmmv2.cjs"
     }
   },
   "scripts": {
@@ -33,6 +43,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.19.9",
+    "@vitest/coverage-v8": "^3.2.4",
     "@vitest/ui": "^3.2.4",
     "typescript": "^5.9.2",
     "vite": "^7.0.6",
@@ -48,5 +59,8 @@
   "bugs": {
     "url": "https://github.com/yourusername/mmm/issues"
   },
-  "homepage": "https://github.com/yourusername/mmm#readme"
+  "homepage": "https://github.com/yourusername/mmm#readme",
+  "dependencies": {
+    "node-emoji": "^2.2.0"
+  }
 }

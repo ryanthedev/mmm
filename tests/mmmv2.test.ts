@@ -477,6 +477,24 @@ describe('token parser', () => {
       }]);
     });
 
+    it('should parse code fence with space before language', () => {
+      const tokens = parse('``` javascript');
+      expect(tokens).toEqual([{
+        type: 'code_fence',
+        content: '',
+        metadata: { lang: 'javascript' }
+      }]);
+    });
+
+    it('should parse code fence with spaces around language', () => {
+      const tokens = parse('```  text  ');
+      expect(tokens).toEqual([{
+        type: 'code_fence',
+        content: '',
+        metadata: { lang: 'text' }
+      }]);
+    });
+
     it('should parse inline code', () => {
       const tokens = parse('this is `code` inline');
       expect(tokens).toEqual([
