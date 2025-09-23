@@ -1,17 +1,16 @@
-# mmm - Token Parser with Plugins & Hooks 🚀
+# mmm
 
-<img width="150" height="150" alt="image" src="https://github.com/user-attachments/assets/143c69ce-b408-4067-96e3-d5f18f4fa778" />
-
-A blazing fast token-based markdown parser with extensible plugins and hooks system, written in TypeScript.
+A streaming markdown parser with plugin-based architecture for TypeScript.
 
 ## Features
 
-- 🎯 **Token-Based Parsing**: Clean, structured token output for maximum flexibility
-- 🔌 **Plugin System**: Create custom tokens with built-in parsing support
-- 🪝 **Hook System**: Post-process tokens with metadata, CSS classes, or any transformation
-- 📦 **TypeScript**: Full type safety with string-based token types (no restrictive enums!)
-- ⚡ **Single Pass**: Parse entire lines in one go, not streaming
-- 🎨 **Extensible**: Simple, content-based tokens + complex, children-based tokens
+- **Line-by-line streaming parser** - Process markdown incrementally
+- **Extensible plugin system** - Add custom parsing rules with priority ordering
+- **Token hooks** - Transform tokens after parsing
+- **Cursor support** - Track cursor position in text (`@!` notation)
+- **Emoji support** - Built-in emoji shortcode parsing (`:smile:` → 😊)
+- **TypeScript first** - Full type safety with flexible token types
+- **Formatters included** - Markdown and HTML output formatters
 
 ## Installation
 
@@ -22,7 +21,7 @@ npm install mmm
 ## Quick Start
 
 ```typescript
-import { parse, TokenParser } from 'mmm';
+import { parse, TokenParser, MarkdownFormatter, HTMLFormatter } from 'mmm';
 
 // Simple parsing
 const tokens = parse('This is **bold** text');
@@ -33,238 +32,316 @@ console.log(tokens);
 //   { type: 'text', content: ' text' }
 // ]
 
-// Advanced parsing with plugins and hooks
+// Format back to markdown
+const formatter = new MarkdownFormatter();
+const markdown = formatter.format(tokens);
+// "This is **bold** text"
+
+// Or to HTML
+const htmlFormatter = new HTMLFormatter();
+const html = htmlFormatter.format(tokens);
+// "This is <strong>bold</strong> text"
+```
+
+## Cursor Support
+
+The parser includes special support for tracking cursor position using the `@!` notation:
+
+```typescript
+import { parse, TokenType } from 'mmm';
+
+// Parse text with cursor
+const tokens = parse('Hello @! world');
+// [
+//   { type: 'text', content: 'Hello ' },
+//   { type: 'cursor', content: ' ' },  // Captures character after @!
+//   { type: 'text', content: 'world' }
+// ]
+
+// Cursor in formatted text
+const boldWithCursor = parse('**bold @! text**');
+// [
+//   {
+//     type: 'bold',
+//     children: [
+//       { type: 'text', content: 'bold ' },
+//       { type: 'cursor', content: ' ' },
+//       { type: 'text', content: 'text' }
+//     ]
+//   }
+// ]
+
+// Multiple cursors
+const multiCursor = parse('Start @! middle @! end');
+// Tracks multiple cursor positions throughout the text
+```
+
+## Emoji Support
+
+Built-in emoji shortcode parsing with customizable mappings:
+
+```typescript
+import { parse, EmojiManager, createEmojiManagerWithNodeEmoji } from 'mmm';
+
+// Use default emoji set
+const manager = new EmojiManager();
+manager.addEmoji('custom', '🎯');
+
+const tokens = parse(':smile: :custom:', manager);
+// [
+//   { type: 'emoji', content: '😊', metadata: { shortcode: 'smile' } },
+//   { type: 'text', content: ' ' },
+//   { type: 'emoji', content: '🎯', metadata: { shortcode: 'custom' } }
+// ]
+
+// Or use node-emoji library (if installed)
+const fullManager = createEmojiManagerWithNodeEmoji();
+```
+
+## Plugin System
+
+Create custom parsing rules with the plugin system:
+
+```typescript
+import { TokenParser, ParsePlugin } from 'mmm';
+
+// Create a custom plugin for @mentions
+const mentionPlugin: ParsePlugin = {
+  name: 'mention',
+  priority: 100, // Higher priority runs first
+  canHandle: (line: string) => line.includes('@'),
+  parse: (line: string, parseInline) => {
+    const regex = /@(\w+)/g;
+    const tokens = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(line)) !== null) {
+      // Add text before mention
+      if (match.index > lastIndex) {
+        tokens.push(...parseInline(line.slice(lastIndex, match.index)));
+      }
+
+      // Add mention token
+      tokens.push({
+        type: 'mention',
+        content: match[1],
+        metadata: { username: match[1] }
+      });
+
+      lastIndex = regex.lastIndex;
+    }
+
+    // Add remaining text
+    if (lastIndex < line.length) {
+      tokens.push(...parseInline(line.slice(lastIndex)));
+    }
+
+    return tokens;
+  }
+};
+
+const parser = new TokenParser({ plugins: [mentionPlugin] });
+const result = parser.parse('Hello @alice and @bob!');
+```
+
+## Hook System
+
+Transform tokens after parsing with hooks:
+
+```typescript
+import { TokenParser, TokenHook } from 'mmm';
+
+// Add CSS classes to bold tokens
+const cssHook: TokenHook = {
+  name: 'css-bold',
+  tokenType: 'bold',
+  process: (token) => ({
+    ...token,
+    metadata: {
+      ...token.metadata,
+      className: 'font-bold text-emphasis'
+    }
+  })
+};
+
+// Add data attributes to links
+const linkHook: TokenHook = {
+  name: 'link-tracker',
+  tokenType: 'link',
+  process: (token) => ({
+    ...token,
+    metadata: {
+      ...token.metadata,
+      dataTrack: true,
+      target: '_blank'
+    }
+  })
+};
+
 const parser = new TokenParser({
-  plugins: [mathPlugin],
-  hooks: [cssHook]
+  hooks: [cssHook, linkHook]
 });
 ```
 
-## What We Support (Based on Our Tests)
+## Supported Markdown Elements
 
-We've got comprehensive test coverage for all this crazy shit:
-
-### Basic Formatting
-- **Text**: Plain text tokens
-- **Bold**: `**bold**` and `__bold__` → `{ type: 'bold', children: [...] }`
-- **Italic**: `*italic*` and `_italic_` → `{ type: 'italic', children: [...] }`
-- **Inline Code**: `` `code` `` → `{ type: 'inline_code', content: 'code' }`
-- **Strikethrough**: `~~text~~` → `{ type: 'strikethrough', content: 'text' }`
-- **Highlight**: `==text==` → `{ type: 'highlight', content: 'text' }`
-- **Subscript**: `~text~` → `{ type: 'subscript', content: 'text' }`
-- **Superscript**: `^text^` → `{ type: 'superscript', content: 'text' }`
-
-### Advanced Formatting
-- **Nested Emphasis**: `**brown *fox***` works perfectly (we handle the tricky `***` case!)
-- **Complex Headings**: `# **Bold** and *italic* and ==highlight== text` with full inline parsing
-- **Links**: `[text](url "title")` → `{ type: 'link', children: [...], metadata: { href, title } }`
-- **Images**: Both `![alt](src)` and `<image-card alt="alt" src="src"></image-card>` formats
-- **Autolinks**: `<https://example.com>` → automatic link tokens
+### Inline Formatting
+- **Bold**: `**text**` or `__text__`
+- **Italic**: `*text*` or `_text_`
+- **Strikethrough**: `~~text~~`
+- **Highlight**: `==text==`
+- **Code**: `` `code` ``
+- **Subscript**: `~text~`
+- **Superscript**: `^text^`
+- **Links**: `[text](url "title")`
+- **Images**: `![alt](url "title")`
+- **Autolinks**: `<https://example.com>`
 
 ### Block Elements
-- **Headings**: `# H1` through `###### H6` with optional IDs: `# Heading {#custom-id}`
-- **Blockquotes**: `> text` with nesting support `>> nested` and inline formatting
-- **Code Fences**: `` ```javascript `` with language detection
-- **Lists**: 
-  - Unordered: `- item`, `* item`, `+ item`
-  - Ordered: `1. item`, `2. item`
-  - Task Lists: `- [ ] unchecked`, `- [x] checked`
-- **Tables**: 
-  - Rows: `col1 | col2 | col3`
-  - Separators: `--- | :---: | ---:` with alignment (left, center, right, none)
-- **Horizontal Rules**: `---`, `***`, `___`, `- - -`
-- **Footnotes**: `[^1]: definition` and `text[^1]` references
-
-### Special Features
-- **Empty Lines**: Preserves exact whitespace content: `\t\n` → `{ type: 'empty_line', content: '\t\n' }`
-- **Escaping**: `\\*not italic\\*` → separate text tokens for escaped characters
-- **Edge Cases**: Bold at start/end of lines, mixed formatting, all the weird shit
-
-## Plugin System - The Good Stuff
-
-Create custom tokens that can use built-in parsing for nested content:
-
-```typescript
-const mathPlugin = {
-  name: 'math',
-  priority: 100,
-  canHandle: (line) => line.startsWith('$$') && line.endsWith('$$'),
-  parse: (line, parseInline) => {
-    const content = line.slice(2, -2).trim();
-    return [{ type: 'math', children: parseInline(content) }];
-  }
-};
-
-const parser = new TokenParser({ plugins: [mathPlugin] });
-
-// Input: $$E = **mc**^2^$$
-// Output: {
-//   type: 'math',
-//   children: [
-//     { type: 'text', content: 'E = ' },
-//     { type: 'bold', children: [{ type: 'text', content: 'mc' }] },
-//     { type: 'superscript', content: '2' }
-//   ]
-// }
-```
-
-### Plugin Features (All Tested!)
-- **Priority System**: Higher priority plugins run first
-- **Fallback**: Plugins can return `null` to fall back to built-in parsing
-- **Dynamic Management**: Add/remove plugins at runtime
-- **Built-in Parser Access**: Use `parseInline` to embed standard formatting in custom tokens
-
-## Hook System - Post-Processing Magic
-
-Transform tokens after parsing with hooks. Perfect for adding CSS classes, metadata, or any custom processing:
-
-```typescript
-const cssHook = {
-  name: 'css-classes',
-  tokenType: 'bold',
-  process: (token) => ({
-    ...token,
-    metadata: { ...token.metadata, cssClass: 'font-bold text-lg' }
-  })
-};
-
-const parser = new TokenParser({ hooks: [cssHook] });
-const result = parser.parse('This is **bold** text');
-
-// Result:
-// [
-//   { type: 'text', content: 'This is ' },
-//   { 
-//     type: 'bold', 
-//     children: [{ type: 'text', content: 'bold' }],
-//     metadata: { cssClass: 'font-bold text-lg' }
-//   },
-//   { type: 'text', content: ' text' }
-// ]
-```
-
-### Hook Features (All Tested!)
-- **Recursive Processing**: Hooks apply to nested tokens (children processed first, then parent)
-- **Multiple Hooks**: Chain multiple hooks on the same token type
-- **Dynamic Management**: Add/remove hooks at runtime
-- **Plugin Integration**: Works seamlessly with custom plugin tokens
-
-## Real-World Examples from Our Tests
-
-### Theme System Hook
-```typescript
-const boldHook = {
-  name: 'bold-theme',
-  tokenType: 'bold',
-  process: (token) => ({
-    ...token,
-    metadata: { ...token.metadata, theme: 'primary' }
-  })
-};
-
-// Perfect for building design systems!
-```
-
-### Math Expression Plugin + Styling Hook
-```typescript
-// Plugin creates the math token
-const mathPlugin = {
-  name: 'math',
-  priority: 100,
-  canHandle: (line) => line.startsWith('$$') && line.endsWith('$$'),
-  parse: (line, parseInline) => {
-    const content = line.slice(2, -2).trim();
-    return [{ type: 'math', children: parseInline(content) }];
-  }
-};
-
-// Hook adds styling metadata
-const mathHook = {
-  name: 'math-styling',
-  tokenType: 'math',
-  process: (token) => ({
-    ...token,
-    metadata: { ...token.metadata, className: 'math-expression', katex: true }
-  })
-};
-
-// Result: Custom math tokens with both content parsing AND styling metadata
-```
-
-### Alert Plugin
-```typescript
-const alertPlugin = {
-  name: 'alert',
-  priority: 90,
-  canHandle: (line) => line.startsWith('!!! '),
-  parse: (line, parseInline) => {
-    const content = line.slice(4).trim();
-    const [type, ...messageParts] = content.split(' ');
-    return [{
-      type: 'alert',
-      content: messageParts.join(' '),
-      metadata: { alertType: type }
-    }];
-  }
-};
-
-// Usage: !!! warning This is a warning message
-```
+- **Headings**: `# H1` to `###### H6` with optional IDs `{#custom-id}`
+- **Blockquotes**: `> quote` with nesting support
+- **Code blocks**: ` ```language `
+- **Lists**: Unordered (`-`, `*`, `+`), ordered (`1.`), task (`- [ ]`)
+- **Tables**: With alignment support
+- **Horizontal rules**: `---`, `***`, `___`
+- **Footnotes**: `[^1]: definition` and `text[^1]`
 
 ## API Reference
 
-### Core Functions
-```typescript
-// Simple parsing
-function parse(line: string): Token[]
+### Core Types
 
-// Advanced parsing with plugins and hooks
-class TokenParser {
-  constructor(config?: { plugins?: ParsePlugin[], hooks?: TokenHook[] })
-  parse(line: string): Token[]
-  addPlugin(plugin: ParsePlugin): void
-  removePlugin(name: string): void
-  addHook(hook: TokenHook): void
-  removeHook(tokenType: string, hookName: string): void
-}
-```
-
-### Types
 ```typescript
 interface Token {
-  type: string;           // Any string - no restrictive enums!
-  content?: string;       // For simple tokens
-  children?: Token[];     // For complex tokens
-  metadata?: Record<string, any>; // Flexible metadata
+  type: string;
+  content?: string;
+  children?: Token[];
+  metadata?: Record<string, any>;
 }
 
 interface ParsePlugin {
   name: string;
-  priority: number;       // Higher = runs first
+  priority: number;
   canHandle: (line: string) => boolean;
   parse: (line: string, parseInline: (text: string) => Token[]) => Token[] | null;
 }
 
 interface TokenHook {
   name: string;
-  tokenType: string;      // Which token type to transform
+  tokenType: string;
   process: (token: Token) => Token;
 }
 ```
 
-## Token Types We Support
+### Parser Classes
 
-**Simple Tokens (content-based):**
-- `text`, `inline_code`, `strikethrough`, `highlight`, `subscript`, `superscript`, `footnote_ref`, `empty_line`
+```typescript
+class TokenParser {
+  constructor(config?: ParserConfig)
+  parse(line: string): Token[]
+  addPlugin(plugin: ParsePlugin): void
+  removePlugin(name: string): void
+  addHook(hook: TokenHook): void
+  removeHook(tokenType: string, hookName: string): void
+}
 
-**Complex Tokens (children-based):**
-- `bold`, `italic`, `link`, `image`, `h1`-`h6`, `blockquote`, `footnote_def`, `unordered_list_item`, `ordered_list_item`, `task_list_item`, `table_row`, `table_cell`
+class MarkdownFormatter {
+  format(tokens: Token[]): string
+  formatToken(token: Token): string
+}
 
-**Special Tokens:**
-- `code_fence`, `hr`, `table_separator`
+class HTMLFormatter {
+  format(tokens: Token[]): string
+  formatToken(token: Token): string
+}
+```
 
-**Custom Tokens:**
-- Anything you want! String-based types mean infinite extensibility.
+### Token Types Enum
+
+```typescript
+enum TokenType {
+  TEXT = 'text',
+  BOLD = 'bold',
+  ITALIC = 'italic',
+  CODE_FENCE = 'code_fence',
+  INLINE_CODE = 'inline_code',
+  STRIKETHROUGH = 'strikethrough',
+  HIGHLIGHT = 'highlight',
+  SUBSCRIPT = 'subscript',
+  SUPERSCRIPT = 'superscript',
+  CURSOR = 'cursor',
+  LINK = 'link',
+  IMAGE = 'image',
+  H1 = 'h1', H2 = 'h2', H3 = 'h3',
+  H4 = 'h4', H5 = 'h5', H6 = 'h6',
+  BLOCKQUOTE = 'blockquote',
+  HORIZONTAL_RULE = 'hr',
+  UNORDERED_LIST_ITEM = 'unordered_list_item',
+  ORDERED_LIST_ITEM = 'ordered_list_item',
+  TASK_LIST_ITEM = 'task_list_item',
+  TABLE_ROW = 'table_row',
+  TABLE_CELL = 'table_cell',
+  TABLE_SEPARATOR = 'table_separator',
+  FOOTNOTE_REF = 'footnote_ref',
+  FOOTNOTE_DEF = 'footnote_def',
+  EMPTY_LINE = 'empty_line',
+  EMOJI = 'emoji'
+}
+```
+
+## Advanced Example: Custom Math Parser
+
+```typescript
+import { TokenParser, ParsePlugin, TokenHook } from 'mmm';
+
+// Plugin to parse math expressions
+const mathPlugin: ParsePlugin = {
+  name: 'math',
+  priority: 100,
+  canHandle: (line) => line.startsWith('$$') && line.endsWith('$$'),
+  parse: (line, parseInline) => {
+    const content = line.slice(2, -2).trim();
+    return [{
+      type: 'math',
+      children: parseInline(content),
+      metadata: { display: 'block' }
+    }];
+  }
+};
+
+// Hook to add KaTeX rendering flag
+const mathHook: TokenHook = {
+  name: 'katex',
+  tokenType: 'math',
+  process: (token) => ({
+    ...token,
+    metadata: {
+      ...token.metadata,
+      render: 'katex',
+      className: 'math-expression'
+    }
+  })
+};
+
+const parser = new TokenParser({
+  plugins: [mathPlugin],
+  hooks: [mathHook]
+});
+
+const result = parser.parse('$$E = mc^2^$$');
+// {
+//   type: 'math',
+//   children: [
+//     { type: 'text', content: 'E = mc' },
+//     { type: 'superscript', content: '2' }
+//   ],
+//   metadata: {
+//     display: 'block',
+//     render: 'katex',
+//     className: 'math-expression'
+//   }
+// }
+```
 
 ## Development
 
@@ -272,28 +349,22 @@ interface TokenHook {
 # Install dependencies
 npm install
 
-# Run tests (we have 65 of them!)
+# Run tests
 npm test
 
 # Run specific test
-npm test -- -t "should parse headings with complex formatting"
+npm test -- -t "parse headings"
 
-# Type check
+# Type checking
 npm run typecheck
 
-# Build
+# Build library
 npm run build
+
+# Development mode (watch)
+npm run dev
 ```
-
-## Why This Parser Rocks
-
-1. **No Restrictive Enums**: Token types are strings, so you can create any custom type
-2. **Built-in Parser Access**: Plugins get access to `parseInline` for nested formatting
-3. **Hook System**: Transform tokens after parsing for themes, CSS, metadata, etc.
-4. **Recursive Processing**: Hooks work on deeply nested structures
-5. **65 Tests**: We test all the edge cases and weird markdown combinations
-6. **TypeScript**: Full type safety with flexible token structures
 
 ## License
 
-MIT - Go wild! 🎉
+MIT
