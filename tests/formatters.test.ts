@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MarkdownFormatter, HTMLFormatter } from '../src/formatters';
-import { Token, TokenType } from '../src/mmmv2';
+import { MarkdownFormatter, HTMLFormatter, Token, TokenType } from '../src/index';
 
 describe('MarkdownFormatter', () => {
   const formatter = new MarkdownFormatter();

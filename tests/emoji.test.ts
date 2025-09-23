@@ -6,7 +6,7 @@ import {
   createEmojiManagerWithNodeEmoji,
   TokenType,
   type EmojiMapping
-} from '../src/mmmv2';
+} from '../src/index';
 
 describe('EmojiManager', () => {
   let emojiManager: EmojiManager;

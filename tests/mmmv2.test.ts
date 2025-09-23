@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parse, Token, TokenType, TokenParser, TokenHook } from '../src/mmmv2';
+import { parse, Token, TokenType, TokenParser, TokenHook } from '../src/index';
 
 describe('token parser', () => {
   describe('parse', () => {

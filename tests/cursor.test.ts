@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parse, TokenType } from '../src/mmmv2';
+import { parse, TokenType } from '../src/index';
 
 describe('Cursor Token Parsing - Phase 1', () => {
   describe('basic cursor parsing', () => {
@@ -174,6 +174,163 @@ describe('Cursor Token Parsing - Phase 1', () => {
         { type: TokenType.TEXT, content: 'word1' },
         { type: TokenType.CURSOR, content: 'w' },
         { type: TokenType.TEXT, content: 'ord2' }
+      ]);
+    });
+  });
+
+  describe('cursor inside complex tokens', () => {
+    it('should handle cursor inside inline code', () => {
+      const tokens = parse('`co@!de`');
+      expect(tokens).toEqual([
+        {
+          type: TokenType.INLINE_CODE,
+          children: [
+            { type: TokenType.TEXT, content: 'co' },
+            { type: TokenType.CURSOR, content: 'd' },
+            { type: TokenType.TEXT, content: 'e' }
+          ]
+        }
+      ]);
+    });
+
+    it('should handle cursor inside strikethrough', () => {
+      const tokens = parse('~~str@!ike~~');
+      expect(tokens).toEqual([
+        {
+          type: TokenType.STRIKETHROUGH,
+          children: [
+            { type: TokenType.TEXT, content: 'str' },
+            { type: TokenType.CURSOR, content: 'i' },
+            { type: TokenType.TEXT, content: 'ke' }
+          ]
+        }
+      ]);
+    });
+
+    it('should handle cursor inside highlight', () => {
+      const tokens = parse('==hi@!gh==');
+      expect(tokens).toEqual([
+        {
+          type: TokenType.HIGHLIGHT,
+          children: [
+            { type: TokenType.TEXT, content: 'hi' },
+            { type: TokenType.CURSOR, content: 'g' },
+            { type: TokenType.TEXT, content: 'h' }
+          ]
+        }
+      ]);
+    });
+
+    it('should handle cursor inside subscript', () => {
+      const tokens = parse('~sub@!script~');
+      expect(tokens).toEqual([
+        {
+          type: TokenType.SUBSCRIPT,
+          children: [
+            { type: TokenType.TEXT, content: 'sub' },
+            { type: TokenType.CURSOR, content: 's' },
+            { type: TokenType.TEXT, content: 'cript' }
+          ]
+        }
+      ]);
+    });
+
+    it('should handle cursor inside superscript', () => {
+      const tokens = parse('^sup@!er^');
+      expect(tokens).toEqual([
+        {
+          type: TokenType.SUPERSCRIPT,
+          children: [
+            { type: TokenType.TEXT, content: 'sup' },
+            { type: TokenType.CURSOR, content: 'e' },
+            { type: TokenType.TEXT, content: 'r' }
+          ]
+        }
+      ]);
+    });
+
+    it('should handle cursor inside link text', () => {
+      const tokens = parse('[li@!nk](url)');
+      expect(tokens).toEqual([
+        {
+          type: TokenType.LINK,
+          children: [
+            { type: TokenType.TEXT, content: 'li' },
+            { type: TokenType.CURSOR, content: 'n' },
+            { type: TokenType.TEXT, content: 'k' }
+          ],
+          metadata: { title: '', href: 'url' }
+        }
+      ]);
+    });
+
+    it('should handle cursor inside link URL', () => {
+      const tokens = parse('[link](ur@!l)');
+      expect(tokens).toEqual([
+        {
+          type: TokenType.LINK,
+          children: [{ type: TokenType.TEXT, content: 'link' }],
+          metadata: {
+            title: '',
+            hrefTokens: [
+              { type: TokenType.TEXT, content: 'ur' },
+              { type: TokenType.CURSOR, content: 'l' }
+            ]
+          }
+        }
+      ]);
+    });
+
+    it('should handle cursor inside autolink', () => {
+      const tokens = parse('<http://ex@!ample.com>');
+      expect(tokens).toEqual([
+        {
+          type: TokenType.LINK,
+          children: [
+            { type: TokenType.TEXT, content: 'http://ex' },
+            { type: TokenType.CURSOR, content: 'a' },
+            { type: TokenType.TEXT, content: 'mple.com' }
+          ],
+          metadata: {
+            hrefTokens: [
+              { type: TokenType.TEXT, content: 'http://ex' },
+              { type: TokenType.CURSOR, content: 'a' },
+              { type: TokenType.TEXT, content: 'mple.com' }
+            ]
+          }
+        }
+      ]);
+    });
+
+    it('should handle cursor inside image alt text', () => {
+      const tokens = parse('![al@!t](img.jpg)');
+      expect(tokens).toEqual([
+        {
+          type: TokenType.IMAGE,
+          children: [
+            { type: TokenType.TEXT, content: 'al' },
+            { type: TokenType.CURSOR, content: 't' }
+          ],
+          metadata: { src: 'img.jpg', title: '' }
+        }
+      ]);
+    });
+
+    it('should handle cursor with emoji shortcodes', () => {
+      const tokens = parse(':sm@!ile:');
+      expect(tokens).toEqual([
+        { type: TokenType.TEXT, content: ':sm' },
+        { type: TokenType.CURSOR, content: 'i' },
+        { type: TokenType.TEXT, content: 'le:' }
+      ]);
+    });
+
+    it('should handle cursor with footnotes', () => {
+      const tokens = parse('[^foo@!tnote]');
+      expect(tokens).toEqual([
+        { type: TokenType.TEXT, content: '[^foo' },
+        { type: TokenType.CURSOR, content: 't' },
+        { type: TokenType.TEXT, content: 'note]' }
       ]);
     });
   });
