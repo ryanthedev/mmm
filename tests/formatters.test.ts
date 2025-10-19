@@ -1123,4 +1123,63 @@ describe('HTMLFormatter', () => {
       expect(formatter.format(tokens)).toBe('Before <span class="cursor"></span> and <strong>bold</strong> and <span class="cursor"></span> after');
     });
   });
+
+  describe('wrapRootText option', () => {
+    it('should not wrap root text by default', () => {
+      const formatter = new HTMLFormatter();
+      const tokens: Token[] = [
+        { type: TokenType.TEXT, content: 'Hello world' }
+      ];
+      expect(formatter.format(tokens)).toBe('Hello world');
+    });
+
+    it('should wrap root text when wrapRootText is true', () => {
+      const formatter = new HTMLFormatter({ wrapRootText: true });
+      const tokens: Token[] = [
+        { type: TokenType.TEXT, content: 'Hello world' }
+      ];
+      expect(formatter.format(tokens)).toBe('<p>Hello world</p>');
+    });
+
+    it('should wrap multiple root text tokens', () => {
+      const formatter = new HTMLFormatter({ wrapRootText: true });
+      const tokens: Token[] = [
+        { type: TokenType.TEXT, content: 'First paragraph' },
+        { type: TokenType.TEXT, content: 'Second paragraph' }
+      ];
+      expect(formatter.format(tokens)).toBe('<p>First paragraph</p><p>Second paragraph</p>');
+    });
+
+    it('should not wrap nested text tokens', () => {
+      const formatter = new HTMLFormatter({ wrapRootText: true });
+      const tokens: Token[] = [
+        {
+          type: TokenType.BOLD,
+          children: [{ type: TokenType.TEXT, content: 'Bold text' }]
+        }
+      ];
+      expect(formatter.format(tokens)).toBe('<strong>Bold text</strong>');
+    });
+
+    it('should only wrap root text in mixed tokens', () => {
+      const formatter = new HTMLFormatter({ wrapRootText: true });
+      const tokens: Token[] = [
+        { type: TokenType.TEXT, content: 'Text paragraph' },
+        {
+          type: TokenType.BOLD,
+          children: [{ type: TokenType.TEXT, content: 'Bold' }]
+        },
+        { type: TokenType.TEXT, content: 'Another paragraph' }
+      ];
+      expect(formatter.format(tokens)).toBe('<p>Text paragraph</p><strong>Bold</strong><p>Another paragraph</p>');
+    });
+
+    it('should properly escape root text when wrapped', () => {
+      const formatter = new HTMLFormatter({ wrapRootText: true });
+      const tokens: Token[] = [
+        { type: TokenType.TEXT, content: '<script>alert("xss")</script>' }
+      ];
+      expect(formatter.format(tokens)).toBe('<p>&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;</p>');
+    });
+  });
 });

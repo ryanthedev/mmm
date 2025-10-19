@@ -6,15 +6,15 @@ describe('Cursor Token Parsing - Phase 1', () => {
     it('should parse standalone cursor', () => {
       const tokens = parse('@!');
       expect(tokens).toEqual([
-        { type: TokenType.CURSOR, content: '' }
+        { type: TokenType.CURSOR }
       ]);
     });
 
     it('should parse cursor at beginning of text', () => {
       const tokens = parse('@!hello world');
       expect(tokens).toEqual([
-        { type: TokenType.CURSOR, content: 'h' },
-        { type: TokenType.TEXT, content: 'ello world' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: 'hello world' }
       ]);
     });
 
@@ -22,7 +22,7 @@ describe('Cursor Token Parsing - Phase 1', () => {
       const tokens = parse('hello world@!');
       expect(tokens).toEqual([
         { type: TokenType.TEXT, content: 'hello world' },
-        { type: TokenType.CURSOR, content: '' }
+        { type: TokenType.CURSOR }
       ]);
     });
 
@@ -30,8 +30,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
       const tokens = parse('hello @!world');
       expect(tokens).toEqual([
         { type: TokenType.TEXT, content: 'hello ' },
-        { type: TokenType.CURSOR, content: 'w' },
-        { type: TokenType.TEXT, content: 'orld' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: 'world' }
       ]);
     });
 
@@ -39,10 +39,10 @@ describe('Cursor Token Parsing - Phase 1', () => {
       const tokens = parse('start @! middle @! end');
       expect(tokens).toEqual([
         { type: TokenType.TEXT, content: 'start ' },
-        { type: TokenType.CURSOR, content: ' ' },
-        { type: TokenType.TEXT, content: 'middle ' },
-        { type: TokenType.CURSOR, content: ' ' },
-        { type: TokenType.TEXT, content: 'end' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: ' middle ' },
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: ' end' }
       ]);
     });
   });
@@ -51,8 +51,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
     it('should handle cursor followed by superscript', () => {
       const tokens = parse('@!normal^super^');
       expect(tokens).toEqual([
-        { type: TokenType.CURSOR, content: 'n' },
-        { type: TokenType.TEXT, content: 'ormal' },
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: 'normal' },
         { type: TokenType.SUPERSCRIPT, content: 'super' }
       ]);
     });
@@ -62,7 +62,7 @@ describe('Cursor Token Parsing - Phase 1', () => {
       expect(tokens).toEqual([
         { type: TokenType.SUPERSCRIPT, content: 'super' },
         { type: TokenType.TEXT, content: 'normal' },
-        { type: TokenType.CURSOR, content: '' }
+        { type: TokenType.CURSOR }
       ]);
     });
 
@@ -71,8 +71,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
       expect(tokens).toEqual([
         { type: TokenType.SUPERSCRIPT, content: 'first' },
         { type: TokenType.TEXT, content: 'text' },
-        { type: TokenType.CURSOR, content: 'm' },
-        { type: TokenType.TEXT, content: 'ore' },
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: 'more' },
         { type: TokenType.SUPERSCRIPT, content: 'second' }
       ]);
     });
@@ -84,7 +84,7 @@ describe('Cursor Token Parsing - Phase 1', () => {
       expect(tokens).toEqual([
         { type: TokenType.BOLD, children: [{ type: TokenType.TEXT, content: 'bold' }] },
         { type: TokenType.TEXT, content: ' text ' },
-        { type: TokenType.CURSOR, content: '' }
+        { type: TokenType.CURSOR }
       ]);
     });
 
@@ -93,8 +93,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
       expect(tokens).toEqual([
         { type: TokenType.ITALIC, children: [{ type: TokenType.TEXT, content: 'italic' }] },
         { type: TokenType.TEXT, content: ' ' },
-        { type: TokenType.CURSOR, content: ' ' },
-        { type: TokenType.TEXT, content: 'text' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: ' text' }
       ]);
     });
 
@@ -103,22 +103,22 @@ describe('Cursor Token Parsing - Phase 1', () => {
       expect(tokens).toEqual([
         { type: TokenType.INLINE_CODE, content: 'code' },
         { type: TokenType.TEXT, content: ' ' },
-        { type: TokenType.CURSOR, content: ' ' },
-        { type: TokenType.TEXT, content: 'more' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: ' more' }
       ]);
     });
 
     it('should parse cursor with links', () => {
       const tokens = parse('[link](url) @! after');
       expect(tokens).toEqual([
-        { 
-          type: TokenType.LINK, 
+        {
+          type: TokenType.LINK,
           children: [{ type: TokenType.TEXT, content: 'link' }],
           metadata: { href: 'url', title: '' }
         },
         { type: TokenType.TEXT, content: ' ' },
-        { type: TokenType.CURSOR, content: ' ' },
-        { type: TokenType.TEXT, content: 'after' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: ' after' }
       ]);
     });
 
@@ -127,8 +127,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
       expect(tokens).toEqual([
         { type: TokenType.STRIKETHROUGH, content: 'deleted' },
         { type: TokenType.TEXT, content: ' ' },
-        { type: TokenType.CURSOR, content: ' ' },
-        { type: TokenType.TEXT, content: 'text' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: ' text' }
       ]);
     });
 
@@ -137,8 +137,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
       expect(tokens).toEqual([
         { type: TokenType.HIGHLIGHT, content: 'highlighted' },
         { type: TokenType.TEXT, content: ' ' },
-        { type: TokenType.CURSOR, content: ' ' },
-        { type: TokenType.TEXT, content: 'text' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: ' text' }
       ]);
     });
   });
@@ -147,15 +147,15 @@ describe('Cursor Token Parsing - Phase 1', () => {
     it('should handle cursor with no surrounding text', () => {
       const tokens = parse('@!');
       expect(tokens).toEqual([
-        { type: TokenType.CURSOR, content: '' }
+        { type: TokenType.CURSOR }
       ]);
     });
 
     it('should handle consecutive cursors', () => {
       const tokens = parse('@!@!');
       expect(tokens).toEqual([
-        { type: TokenType.CURSOR, content: '@' },
-        { type: TokenType.TEXT, content: '!' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: '@!' }
       ]);
     });
 
@@ -163,8 +163,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
       const tokens = parse('   @!   ');
       expect(tokens).toEqual([
         { type: TokenType.TEXT, content: '   ' },
-        { type: TokenType.CURSOR, content: ' ' },
-        { type: TokenType.TEXT, content: '  ' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: '   ' }
       ]);
     });
 
@@ -172,8 +172,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
       const tokens = parse('word1@!word2');
       expect(tokens).toEqual([
         { type: TokenType.TEXT, content: 'word1' },
-        { type: TokenType.CURSOR, content: 'w' },
-        { type: TokenType.TEXT, content: 'ord2' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: 'word2' }
       ]);
     });
   });
@@ -186,8 +186,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
           type: TokenType.INLINE_CODE,
           children: [
             { type: TokenType.TEXT, content: 'co' },
-            { type: TokenType.CURSOR, content: 'd' },
-            { type: TokenType.TEXT, content: 'e' }
+            { type: TokenType.CURSOR },
+            { type: TokenType.TEXT, content: 'de' }
           ]
         }
       ]);
@@ -200,8 +200,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
           type: TokenType.STRIKETHROUGH,
           children: [
             { type: TokenType.TEXT, content: 'str' },
-            { type: TokenType.CURSOR, content: 'i' },
-            { type: TokenType.TEXT, content: 'ke' }
+            { type: TokenType.CURSOR },
+            { type: TokenType.TEXT, content: 'ike' }
           ]
         }
       ]);
@@ -214,8 +214,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
           type: TokenType.HIGHLIGHT,
           children: [
             { type: TokenType.TEXT, content: 'hi' },
-            { type: TokenType.CURSOR, content: 'g' },
-            { type: TokenType.TEXT, content: 'h' }
+            { type: TokenType.CURSOR },
+            { type: TokenType.TEXT, content: 'gh' }
           ]
         }
       ]);
@@ -228,8 +228,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
           type: TokenType.SUBSCRIPT,
           children: [
             { type: TokenType.TEXT, content: 'sub' },
-            { type: TokenType.CURSOR, content: 's' },
-            { type: TokenType.TEXT, content: 'cript' }
+            { type: TokenType.CURSOR },
+            { type: TokenType.TEXT, content: 'script' }
           ]
         }
       ]);
@@ -242,8 +242,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
           type: TokenType.SUPERSCRIPT,
           children: [
             { type: TokenType.TEXT, content: 'sup' },
-            { type: TokenType.CURSOR, content: 'e' },
-            { type: TokenType.TEXT, content: 'r' }
+            { type: TokenType.CURSOR },
+            { type: TokenType.TEXT, content: 'er' }
           ]
         }
       ]);
@@ -256,8 +256,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
           type: TokenType.LINK,
           children: [
             { type: TokenType.TEXT, content: 'li' },
-            { type: TokenType.CURSOR, content: 'n' },
-            { type: TokenType.TEXT, content: 'k' }
+            { type: TokenType.CURSOR },
+            { type: TokenType.TEXT, content: 'nk' }
           ],
           metadata: { title: '', href: 'url' }
         }
@@ -274,7 +274,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
             title: '',
             hrefTokens: [
               { type: TokenType.TEXT, content: 'ur' },
-              { type: TokenType.CURSOR, content: 'l' }
+              { type: TokenType.CURSOR },
+              { type: TokenType.TEXT, content: 'l' }
             ]
           }
         }
@@ -288,14 +289,14 @@ describe('Cursor Token Parsing - Phase 1', () => {
           type: TokenType.LINK,
           children: [
             { type: TokenType.TEXT, content: 'http://ex' },
-            { type: TokenType.CURSOR, content: 'a' },
-            { type: TokenType.TEXT, content: 'mple.com' }
+            { type: TokenType.CURSOR },
+            { type: TokenType.TEXT, content: 'ample.com' }
           ],
           metadata: {
             hrefTokens: [
               { type: TokenType.TEXT, content: 'http://ex' },
-              { type: TokenType.CURSOR, content: 'a' },
-              { type: TokenType.TEXT, content: 'mple.com' }
+              { type: TokenType.CURSOR },
+              { type: TokenType.TEXT, content: 'ample.com' }
             ]
           }
         }
@@ -309,7 +310,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
           type: TokenType.IMAGE,
           children: [
             { type: TokenType.TEXT, content: 'al' },
-            { type: TokenType.CURSOR, content: 't' }
+            { type: TokenType.CURSOR },
+            { type: TokenType.TEXT, content: 't' }
           ],
           metadata: { src: 'img.jpg', title: '' }
         }
@@ -320,8 +322,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
       const tokens = parse(':sm@!ile:');
       expect(tokens).toEqual([
         { type: TokenType.TEXT, content: ':sm' },
-        { type: TokenType.CURSOR, content: 'i' },
-        { type: TokenType.TEXT, content: 'le:' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: 'ile:' }
       ]);
     });
 
@@ -329,8 +331,8 @@ describe('Cursor Token Parsing - Phase 1', () => {
       const tokens = parse('[^foo@!tnote]');
       expect(tokens).toEqual([
         { type: TokenType.TEXT, content: '[^foo' },
-        { type: TokenType.CURSOR, content: 't' },
-        { type: TokenType.TEXT, content: 'note]' }
+        { type: TokenType.CURSOR },
+        { type: TokenType.TEXT, content: 'tnote]' }
       ]);
     });
   });

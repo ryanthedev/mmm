@@ -197,20 +197,11 @@ function parseCursorOnlyContent(text: string): Token[] {
       tokens.push({ type: TokenType.TEXT, content: remaining.slice(currentIndex, cursorIndex) });
     }
 
-    // Add cursor token
-    const nextCharIndex = cursorIndex + 2;
-    let cursorContent = '';
-    if (nextCharIndex < remaining.length) {
-      cursorContent = remaining[nextCharIndex] || '';
-      currentIndex = nextCharIndex + 1;
-    } else {
-      currentIndex = nextCharIndex;
-    }
-
+    // Add cursor token (no content)
     tokens.push({
-      type: TokenType.CURSOR,
-      content: cursorContent
+      type: TokenType.CURSOR
     });
+    currentIndex = cursorIndex + 2;
   }
 
   return tokens.filter(t => t.content || t.type === TokenType.CURSOR);
@@ -274,21 +265,19 @@ function parseInline(text: string, emojiManager?: EmojiManager): Token[] {
         tokens.push({ type: TokenType.TEXT, content: remaining.slice(0, currentIndex) });
       }
 
-      // Capture the next character after @! (if it exists)
-      const nextCharIndex = currentIndex + 2;
-      let cursorContent = '';
-      let consumeLength = 2; // Start with @! length
-
-      if (nextCharIndex < remaining.length) {
-        cursorContent = remaining[nextCharIndex] || '';
-        consumeLength = 3; // @! + one character
-      }
-
       tokens.push({
-        type: TokenType.CURSOR,
-        content: cursorContent
+        type: TokenType.CURSOR
       });
-      remaining = remaining.slice(currentIndex + consumeLength);
+
+      // Check if immediately followed by another @! - if so, treat it as literal text
+      const afterCursor = remaining.slice(currentIndex + 2);
+      if (afterCursor.startsWith('@!')) {
+        // Add the second @! as escaped text
+        tokens.push({ type: TokenType.TEXT, content: '@!' });
+        remaining = afterCursor.slice(2);
+      } else {
+        remaining = afterCursor;
+      }
       currentIndex = 0;
       matched = true;
     }
@@ -925,7 +914,7 @@ export class MarkdownFormatter implements Formatter {
         return `==${token.content || ''}==`;
 
       case TokenType.CURSOR:
-        return `@!${token.content || ''}`;
+        return `@!`;
 
       case TokenType.H1:
         return `# ${this.formatChildren(token)}`;
@@ -959,14 +948,35 @@ export class MarkdownFormatter implements Formatter {
 }
 
 export class HTMLFormatter implements Formatter {
+
   format(tokens: Token[]): string {
-    return tokens.map(token => this.formatToken(token)).join('');
+    // Check if this is a paragraph (inline elements only) vs block elements
+    const hasBlockElements = tokens.some(token =>
+      [TokenType.H1, TokenType.H2, TokenType.H3, TokenType.H4, TokenType.H5, TokenType.H6,
+       TokenType.BLOCKQUOTE, TokenType.HORIZONTAL_RULE, TokenType.UNORDERED_LIST_ITEM,
+       TokenType.ORDERED_LIST_ITEM, TokenType.TASK_LIST_ITEM, TokenType.TABLE_ROW,
+       TokenType.TABLE_SEPARATOR, TokenType.CODE_FENCE, TokenType.FOOTNOTE_DEF,
+       TokenType.EMPTY_LINE].includes(token.type as TokenType)
+    );
+
+    if (hasBlockElements) {
+      // Render block elements normally
+      return tokens.map(token => this.formatToken(token, false)).join('');
+    } else {
+      // Wrap inline elements in a paragraph
+      const formatted = tokens.map(token => this.formatToken(token, false)).join('');
+      return `<p>${formatted}</p>`;
+    }
   }
 
-  formatToken(token: Token): string {
+  formatToken(token: Token, isRoot: boolean = false): string {
     switch (token.type) {
       case TokenType.TEXT:
-        return this.escapeHtml(token.content || '');
+        const escapedText = this.escapeHtml(token.content || '');
+        if (isRoot) {
+          return `<p>${escapedText}</p>`;
+        }
+        return escapedText;
 
       case TokenType.BOLD:
         return `<strong>${this.formatChildren(token)}</strong>`;
@@ -975,13 +985,22 @@ export class HTMLFormatter implements Formatter {
         return `<em>${this.formatChildren(token)}</em>`;
 
       case TokenType.STRIKETHROUGH:
-        return `<del>${token.content || ''}</del>`;
+        return `<del>${token.content || this.formatChildren(token)}</del>`;
 
       case TokenType.HIGHLIGHT:
-        return `<mark>${token.content || ''}</mark>`;
+        return `<mark>${token.content || this.formatChildren(token)}</mark>`;
 
       case TokenType.CURSOR:
-        return `<span class="cursor">${this.escapeHtml(token.content || ' ')}</span>`;
+        return `<span class="cursor"></span>`;
+
+      case TokenType.INLINE_CODE:
+        return `<code>${this.escapeHtml(token.content || this.formatChildren(token))}</code>`;
+
+      case TokenType.SUBSCRIPT:
+        return `<sub>${this.escapeHtml(token.content || '') || this.formatChildren(token)}</sub>`;
+
+      case TokenType.SUPERSCRIPT:
+        return `<sup>${this.escapeHtml(token.content || '') || this.formatChildren(token)}</sup>`;
 
       case TokenType.H1:
       case TokenType.H2:
@@ -990,16 +1009,79 @@ export class HTMLFormatter implements Formatter {
       case TokenType.H5:
       case TokenType.H6:
         const level = token.type.charAt(1);
+        const id = token.metadata?.['id'];
+        if (id) {
+          return `<h${level} id="${this.escapeHtml(id as string)}">${this.formatChildren(token)}</h${level}>`;
+        }
         return `<h${level}>${this.formatChildren(token)}</h${level}>`;
 
+      case TokenType.LINK:
+        const href = (token.metadata?.['href'] as string) || '';
+        const linkTitle = (token.metadata?.['title'] as string) || '';
+        const titleAttr = linkTitle ? ` title="${this.escapeHtml(linkTitle)}"` : '';
+        return `<a href="${this.escapeHtml(href)}"${titleAttr}>${this.formatChildren(token)}</a>`;
+
+      case TokenType.IMAGE:
+        const src = (token.metadata?.['src'] as string) || '';
+        const imageTitle = (token.metadata?.['title'] as string) || '';
+        const alt = this.formatChildren(token);
+        const imageTitleAttr = imageTitle ? ` title="${this.escapeHtml(imageTitle)}"` : '';
+        return `<img src="${this.escapeHtml(src)}" alt="${alt}"${imageTitleAttr}>`;
+
+      case TokenType.BLOCKQUOTE:
+        return `<blockquote>${this.formatChildren(token)}</blockquote>`;
+
+      case TokenType.HORIZONTAL_RULE:
+        return `<hr>`;
+
+      case TokenType.UNORDERED_LIST_ITEM:
+      case TokenType.ORDERED_LIST_ITEM:
+        return `<li>${this.formatChildren(token)}</li>`;
+
+      case TokenType.TASK_LIST_ITEM:
+        const checked = token.metadata?.['checked'] ? ' checked' : '';
+        const checkboxId = this.generateId();
+        return `<li><input type="checkbox" id="${checkboxId}"${checked} disabled> <label for="${checkboxId}">${this.formatChildren(token)}</label></li>`;
+
+      case TokenType.TABLE_ROW:
+        const cells = token.children?.map(child => this.formatToken(child)).join('') || '';
+        return `<tr>${cells}</tr>`;
+
+      case TokenType.TABLE_CELL:
+        return `<td>${this.formatChildren(token)}</td>`;
+
+      case TokenType.TABLE_SEPARATOR:
+        return '';
+
+      case TokenType.CODE_FENCE:
+        return `<p>${this.escapeHtml(token.content || '')}</p>`;
+
+      case TokenType.FOOTNOTE_REF:
+        const refId = this.escapeHtml(token.content || '');
+        return `<sup><a href="#fn-${refId}" id="fnref-${refId}">${refId}</a></sup>`;
+
+      case TokenType.FOOTNOTE_DEF:
+        const defId = this.escapeHtml((token.metadata?.['id'] as string) || '');
+        return `<div id="fn-${defId}" class="footnote"><a href="#fnref-${defId}">${defId}</a>: ${this.formatChildren(token)}</div>`;
+
+      case TokenType.EMPTY_LINE:
+        return '<br>';
+
+      case TokenType.EMOJI:
+        return this.escapeHtml(token.content || '');
+
       default:
-        return token.content || this.formatChildren(token);
+        return (token.content) ? this.escapeHtml(token.content) : this.formatChildren(token);
     }
+  }
+
+  private generateId(): string {
+    return Math.random().toString(36).substring(2, 15);
   }
 
   private formatChildren(token: Token): string {
     if (!token.children) return '';
-    return token.children.map(child => this.formatToken(child)).join('');
+    return token.children.map(child => this.formatToken(child, false)).join('');
   }
 
   private escapeHtml(text: string): string {
